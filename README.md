@@ -64,6 +64,62 @@ Exploration cost: ~52,000 tokens (without codesight)
 Saved:            ~48,800 tokens per conversation
 ```
 
+## How It Works
+
+```mermaid
+flowchart LR
+    A["Your Codebase"] --> B["codesight"]
+    B --> C["AST Parser"]
+    B --> D["Regex Fallback"]
+    C --> E["Structured Context Map"]
+    D --> E
+    E --> F["CLAUDE.md"]
+    E --> G[".cursorrules"]
+    E --> H["codex.md"]
+    E --> I["MCP Server"]
+    
+    style B fill:#f59e0b,stroke:#d97706,color:#000
+    style C fill:#10b981,stroke:#059669,color:#000
+    style E fill:#3b82f6,stroke:#2563eb,color:#fff
+```
+
+```mermaid
+flowchart TD
+    subgraph Detectors["8 Parallel Detectors"]
+        R["Routes<br/>25+ frameworks"]
+        S["Schema<br/>8 ORMs"]
+        CP["Components<br/>React/Vue/Svelte"]
+        G["Dep Graph<br/>Import analysis"]
+        M["Middleware<br/>Auth/CORS/etc"]
+        CF["Config<br/>Env vars"]
+        L["Libraries<br/>Exports + sigs"]
+        CT["Contracts<br/>Params + types"]
+    end
+    
+    A["File Scanner"] --> Detectors
+    Detectors --> O["~3K-5K tokens<br/>vs ~50K-70K exploration"]
+    
+    style O fill:#10b981,stroke:#059669,color:#000
+```
+
+```mermaid
+flowchart LR
+    subgraph Without["Without codesight"]
+        W1["AI reads files"] --> W2["AI greps patterns"]
+        W2 --> W3["AI opens configs"]
+        W3 --> W4["AI explores deps"]
+        W4 --> W5["50,000+ tokens burned"]
+    end
+    
+    subgraph With["With codesight"]
+        C1["AI reads CODESIGHT.md"] --> C2["Full project context"]
+        C2 --> C3["~3,000 tokens"]
+    end
+    
+    style W5 fill:#ef4444,stroke:#dc2626,color:#fff
+    style C3 fill:#10b981,stroke:#059669,color:#000
+```
+
 ## What It Generates
 
 ```
@@ -91,6 +147,20 @@ When TypeScript is installed in the project being scanned, codesight uses the ac
 | Extracts exact Drizzle field types from `.primaryKey().notNull()` chains | Pattern matching |
 | Gets React props from TypeScript interfaces and destructuring | Regex on `{ prop }` |
 | Detects middleware in route chains: `app.get('/path', auth, handler)` | Not captured |
+
+```mermaid
+flowchart TD
+    F["Source File"] --> Check{"TypeScript<br/>in node_modules?"}
+    Check -->|Yes| AST["AST Parse<br/>(TypeScript Compiler API)"]
+    Check -->|No| Regex["Regex Parse<br/>(Pattern Matching)"]
+    AST --> Result["Routes / Schema / Components"]
+    AST -->|"Parse failed"| Regex
+    Regex --> Result
+    
+    style AST fill:#10b981,stroke:#059669,color:#000
+    style Regex fill:#f59e0b,stroke:#d97706,color:#000
+    style Result fill:#3b82f6,stroke:#2563eb,color:#fff
+```
 
 AST detection is indicated in the output:
 
@@ -143,6 +213,25 @@ The files imported the most are the ones that break the most things when changed
 ```
 
 ## Blast Radius
+
+```mermaid
+graph TD
+    DB["src/lib/db.ts<br/>(you change this)"] --> U["src/routes/users.ts"]
+    DB --> P["src/routes/projects.ts"]
+    DB --> B["src/routes/billing.ts"]
+    DB --> A["src/routes/auth.ts"]
+    U --> MW["src/middleware/auth.ts"]
+    P --> MW
+    B --> S["src/services/stripe.ts"]
+    
+    style DB fill:#ef4444,stroke:#dc2626,color:#fff
+    style U fill:#f59e0b,stroke:#d97706,color:#000
+    style P fill:#f59e0b,stroke:#d97706,color:#000
+    style B fill:#f59e0b,stroke:#d97706,color:#000
+    style A fill:#f59e0b,stroke:#d97706,color:#000
+    style MW fill:#fbbf24,stroke:#f59e0b,color:#000
+    style S fill:#fbbf24,stroke:#f59e0b,color:#000
+```
 
 See exactly what breaks if you change a file. BFS through the import graph finds all transitively affected files, routes, models, and middleware.
 
@@ -255,6 +344,21 @@ Runs as a Model Context Protocol server. Claude Code and Cursor call it directly
     }
   }
 }
+```
+
+```mermaid
+flowchart LR
+    AI["Claude Code<br/>or Cursor"] <-->|"JSON-RPC 2.0<br/>over stdio"| MCP["codesight<br/>MCP Server"]
+    MCP --> Cache["Session Cache<br/>(scan once)"]
+    MCP --> T1["get_summary"]
+    MCP --> T2["get_routes"]
+    MCP --> T3["get_schema"]
+    MCP --> T4["get_blast_radius"]
+    MCP --> T5["get_env"]
+    MCP --> T6["get_hot_files"]
+    
+    style MCP fill:#f59e0b,stroke:#d97706,color:#000
+    style Cache fill:#10b981,stroke:#059669,color:#000
 ```
 
 Exposes 8 specialized tools, each returning only what your AI needs:
