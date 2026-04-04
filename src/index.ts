@@ -17,7 +17,7 @@ import { generateAIConfigs } from "./generators/ai-config.js";
 import { generateHtmlReport } from "./generators/html-report.js";
 import type { ScanResult } from "./types.js";
 
-const VERSION = "1.0.0";
+const VERSION = "1.0.1";
 const BRAND = "codesight";
 
 function printHelp() {

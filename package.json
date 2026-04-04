@@ -1,6 +1,6 @@
 {
   "name": "codesight",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "See your codebase clearly. Universal AI context generator that maps routes, schema, components, dependencies, and more for Claude Code, Cursor, Copilot, Codex, and any AI coding tool.",
   "main": "dist/index.js",
   "bin": {
