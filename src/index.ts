@@ -427,9 +427,9 @@ async function main() {
     console.log(` ${outputDirName}/report.html`);
 
     if (doOpen) {
-      const { exec } = await import("node:child_process");
+      const { execFile } = await import("node:child_process");
       const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      exec(`${cmd} "${reportPath}"`);
+      execFile(cmd, [reportPath]);
       console.log("  Opening in browser...");
     }
   }
