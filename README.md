@@ -4,6 +4,8 @@
 
 **Zero dependencies. AST precision. 25+ framework detectors. 8 ORM parsers. 8 MCP tools. One `npx` call.**
 
+**Works with TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust, and PHP.** TypeScript projects get full AST precision. Everything else uses battle-tested regex detection across the same 25+ frameworks.
+
 [![npm version](https://img.shields.io/npm/v/codesight?style=for-the-badge&logo=npm&color=CB3837)](https://www.npmjs.com/package/codesight)
 [![npm downloads](https://img.shields.io/npm/dm/codesight?style=for-the-badge&logo=npm&color=blue&label=Monthly%20Downloads)](https://www.npmjs.com/package/codesight)
 [![npm total](https://img.shields.io/npm/dt/codesight?style=for-the-badge&logo=npm&color=cyan&label=Total%20Downloads)](https://www.npmjs.com/package/codesight)
