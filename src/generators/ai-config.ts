@@ -64,7 +64,7 @@ function generateContext(result: ScanResult): string {
   }
 
   // Wiki reference if it exists
-  lines.push("Read .codesight/wiki/index.md for the wiki knowledge base (targeted articles per subsystem).");
+  lines.push("Read .codesight/wiki/index.md for orientation (WHERE things live). Then read actual source files before implementing. Wiki articles are navigation aids, not implementation guides.");
   lines.push("Read .codesight/CODESIGHT.md for the complete AI context map including all routes, schema, components, libraries, config, middleware, and dependency graph.");
 
   return lines.join("\n");
@@ -205,10 +205,13 @@ export async function generateProfileConfig(
   switch (profile) {
     case "claude-code": {
       summaryLines.push(`## Instructions for Claude Code\n`);
-      summaryLines.push(`Before exploring the repo, read these files in order:`);
-      summaryLines.push(`1. \`.codesight/wiki/index.md\` — wiki index (~200 tokens), load at session start`);
+      summaryLines.push(`**Wiki = navigation aid. Source files = ground truth.**`);
+      summaryLines.push(`Wiki articles tell you WHERE things live and WHAT exists — not HOW they work.`);
+      summaryLines.push(`Always read the actual source files listed in a wiki article before implementing or modifying anything.\n`);
+      summaryLines.push(`Read these files in order at session start:`);
+      summaryLines.push(`1. \`.codesight/wiki/index.md\` — wiki index (~200 tokens), orientation only`);
       summaryLines.push(`2. \`.codesight/wiki/overview.md\` — architecture overview (~500 tokens)`);
-      summaryLines.push(`3. For domain questions, read the relevant wiki article (e.g. \`.codesight/wiki/auth.md\`)`);
+      summaryLines.push(`3. For domain questions, read the wiki article → then read the source files it lists`);
       summaryLines.push(`4. \`.codesight/CODESIGHT.md\` — full context map for deep exploration\n`);
       summaryLines.push(`Or use the codesight MCP server for on-demand queries:`);
       summaryLines.push(`   - \`codesight_get_wiki_article\` — read a specific wiki article by name`);
