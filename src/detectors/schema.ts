@@ -2,7 +2,7 @@ import { join, relative } from "node:path";
 import { readFileSafe } from "../scanner.js";
 import { loadTypeScript } from "../ast/loader.js";
 import { extractDrizzleSchemaAST, extractTypeORMSchemaAST } from "../ast/extract-schema.js";
-import { extractSQLAlchemyAST } from "../ast/extract-python.js";
+import { extractSQLAlchemyAST, extractDjangoModelsAST } from "../ast/extract-python.js";
 import { extractGORMModelsStructured } from "../ast/extract-go.js";
 import { extractEloquentModels } from "../ast/extract-php.js";
 import { extractEntityFrameworkModels } from "../ast/extract-csharp.js";
@@ -39,6 +39,9 @@ export async function detectSchemas(
         break;
       case "gorm":
         models.push(...(await detectGORMSchemas(files, project)));
+        break;
+      case "django":
+        models.push(...(await detectDjangoSchemas(files, project)));
         break;
       case "eloquent":
         models.push(...(await detectEloquentSchemas(files, project)));
@@ -398,6 +401,79 @@ async function detectGORMSchemas(
     const rel = relative(_project.root, file);
     const structModels = extractGORMModelsStructured(rel, content);
     models.push(...structModels);
+  }
+
+  return models;
+}
+
+// --- Django ORM ---
+async function detectDjangoSchemas(
+  files: string[],
+  project: ProjectInfo
+): Promise<SchemaModel[]> {
+  // Django models live in models.py or models/ directories
+  const modelFiles = files.filter(
+    (f) => f.endsWith("/models.py") || f.includes("/models/") && f.endsWith(".py")
+  );
+  const models: SchemaModel[] = [];
+
+  for (const file of modelFiles) {
+    const content = await readFileSafe(file);
+    if (!content.includes("models.Model") && !content.includes("(Model)")) continue;
+
+    const rel = relative(project.root, file);
+    const astModels = await extractDjangoModelsAST(rel, content);
+    if (astModels && astModels.length > 0) {
+      models.push(...astModels);
+      continue;
+    }
+
+    // Regex fallback
+    const classPattern = /class\s+(\w+)\s*\(\s*(?:\w+\.)?Model\s*\)\s*:/g;
+    let m: RegExpExecArray | null;
+    while ((m = classPattern.exec(content)) !== null) {
+      const name = m[1];
+      if (name === "Meta") continue;
+      const fields: SchemaField[] = [];
+      const relations: string[] = [];
+
+      // Match field assignments after the class definition
+      const classStart = m.index + m[0].length;
+      const nextClassMatch = /\nclass\s+\w+/.exec(content.slice(classStart));
+      const classBody = nextClassMatch
+        ? content.slice(classStart, classStart + nextClassMatch.index)
+        : content.slice(classStart);
+
+      const fieldPat = /^\s{4}(\w+)\s*=\s*(?:models\.)?(CharField|TextField|EmailField|IntegerField|BigIntegerField|FloatField|DecimalField|BooleanField|DateField|DateTimeField|TimeField|JSONField|UUIDField|AutoField|BigAutoField|PositiveIntegerField|SlugField|URLField|FileField|ImageField|ForeignKey|OneToOneField|ManyToManyField)\s*\(/gm;
+      let fm: RegExpExecArray | null;
+      while ((fm = fieldPat.exec(classBody)) !== null) {
+        const fname = fm[1];
+        const fclass = fm[2];
+        if (AUDIT_FIELDS.has(fname)) continue;
+
+        if (fclass === "ForeignKey" || fclass === "OneToOneField") {
+          relations.push(`${fname}: ${fclass}`);
+          fields.push({ name: fname + "_id", type: "integer", flags: ["fk"] });
+        } else if (fclass === "ManyToManyField") {
+          relations.push(`${fname}: ManyToMany`);
+        } else {
+          const typeMap: Record<string, string> = {
+            CharField: "string", TextField: "string", EmailField: "string",
+            SlugField: "string", URLField: "string", FileField: "string", ImageField: "string",
+            IntegerField: "integer", BigIntegerField: "integer", PositiveIntegerField: "integer",
+            AutoField: "integer", BigAutoField: "integer",
+            FloatField: "float", DecimalField: "decimal",
+            BooleanField: "boolean", DateField: "date", DateTimeField: "timestamp",
+            TimeField: "time", JSONField: "json", UUIDField: "uuid",
+          };
+          fields.push({ name: fname, type: typeMap[fclass] ?? "string", flags: [] });
+        }
+      }
+
+      if (fields.length > 0 || relations.length > 0) {
+        models.push({ name, fields, relations, orm: "django" });
+      }
+    }
   }
 
   return models;

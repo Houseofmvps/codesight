@@ -34,7 +34,7 @@ export type Framework =
   | "flutter"
   | "unknown";
 
-export type ORM = "drizzle" | "prisma" | "typeorm" | "sqlalchemy" | "gorm" | "mongoose" | "sequelize" | "activerecord" | "ecto" | "eloquent" | "entity-framework" | "unknown";
+export type ORM = "drizzle" | "prisma" | "typeorm" | "sqlalchemy" | "django" | "gorm" | "mongoose" | "sequelize" | "activerecord" | "ecto" | "eloquent" | "entity-framework" | "unknown";
 
 export type ComponentFramework = "react" | "vue" | "svelte" | "flutter" | "unknown";
 

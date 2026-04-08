@@ -2,7 +2,7 @@
 
 ### Your AI assistant wastes thousands of tokens every conversation just figuring out your project. codesight fixes that in one command.
 
-**Zero dependencies. AST precision. 30+ framework detectors. 10 ORM parsers. 11 MCP tools. One `npx` call.**
+**Zero dependencies. AST precision. 30+ framework detectors. 11 ORM parsers. 11 MCP tools. One `npx` call.**
 
 **Works with TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust, PHP, Dart, Swift, and C#.** TypeScript projects get full AST precision. Everything else uses battle-tested regex detection across the same 30+ frameworks.
 
@@ -146,10 +146,9 @@ Tested against three large open-source production codebases (4K–10K+ files eac
 |---|---|---|---|---|---|---|---|---|
 | **OSS Next.js monorepo** | Next.js + tRPC + Prisma, 110+ workspaces | 7,509 | 479 | 173 | 158,660 | 1,485,055 | **9.4x** | 2.8s |
 | **OSS Laravel SaaS** | Laravel + Eloquent | 3,896 | 652 | 59 | 30,739 | 493,285 | **16x** | 2.1s |
-| **OSS Django platform** | Django + pyproject.toml | 4,232 | 7¹ | 0² | 83,842 | 631,020 | **7.5x** | 0.9s |
+| **OSS Django platform** | Django + pyproject.toml | 4,232 | 7¹ | 56 | 83,842 | 631,020 | **7.5x** | 1.0s |
 
 ¹ Django project is GraphQL-first — URL routes aren't the primary API surface. 7 REST utility endpoints detected accurately.
-² Django ORM not yet in scope — codesight supports SQLAlchemy for Python. Schema count of 0 is correct detection, not a miss.
 
 **At 7,509 files:** codesight compresses what would cost ~1.48M tokens of manual exploration into a 158K-token context map in under 3 seconds. The Next.js monorepo has 110+ workspaces, 173 Prisma models, 1,309 React components, and 356 env vars — all extracted correctly across nested workspace paths.
 
@@ -406,7 +405,7 @@ The 1.3x multiplier accounts for AI revisiting files during multi-turn conversat
 | Category | Supported |
 |---|---|
 | **Routes** | Hono, Express, Fastify, Next.js (App + Pages), Koa, NestJS, tRPC, Elysia, AdonisJS, SvelteKit, Remix, Nuxt, FastAPI, Flask, Django, Go (net/http, Gin, Fiber, Echo, Chi), Rails, Phoenix, Spring Boot, Actix, Axum, Laravel, ASP.NET Core (controllers + minimal API), Vapor, Flutter (go_router), raw http.createServer |
-| **Schema** | Drizzle, Prisma, TypeORM, Mongoose, Sequelize, SQLAlchemy, ActiveRecord, Ecto, Eloquent, Entity Framework (10 ORMs) |
+| **Schema** | Drizzle, Prisma, TypeORM, Mongoose, Sequelize, SQLAlchemy, Django ORM, ActiveRecord, Ecto, Eloquent, Entity Framework (11 ORMs) |
 | **Components** | React, Vue, Svelte, Flutter widgets (StatelessWidget, StatefulWidget, ConsumerWidget), SwiftUI views (auto-filters shadcn/ui and Radix primitives) |
 | **Libraries** | TypeScript, JavaScript, Python, Go, Dart, Swift, C#, PHP (exports with function signatures) |
 | **Middleware** | Auth, rate limiting, CORS, validation, logging, error handlers |

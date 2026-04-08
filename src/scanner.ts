@@ -418,6 +418,8 @@ async function detectORMs(
 
   const pyDeps = await getPythonDeps(root);
   if (pyDeps.includes("sqlalchemy")) orms.push("sqlalchemy");
+  // Django has a built-in ORM — detect it from framework list
+  if (pyDeps.includes("django")) orms.push("django");
 
   const goDeps = await getGoDeps(root);
   if (goDeps.some((d) => d.includes("gorm"))) orms.push("gorm");
