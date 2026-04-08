@@ -34,8 +34,14 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: any };
 }
 
+let transportMode: "framed" | "newline" = "framed";
+
 function send(msg: JsonRpcResponse) {
   const json = JSON.stringify(msg);
+  if (transportMode === "newline") {
+    process.stdout.write(`${json}\n`);
+    return;
+  }
   const header = `Content-Length: ${Buffer.byteLength(json)}\r\n\r\n`;
   process.stdout.write(header + json);
 }
@@ -54,16 +60,15 @@ async function getScanResult(directory?: string): Promise<ScanResult> {
   const userConfig = await loadConfig(root);
   const files = await collectFiles(root, userConfig.maxDepth ?? 10, userConfig.ignorePatterns ?? []);
 
-  const [rawRoutes, schemas, components, libs, config, middleware, graph] =
-    await Promise.all([
-      detectRoutes(files, project),
-      detectSchemas(files, project),
-      detectComponents(files, project),
-      detectLibs(files, project),
-      detectConfig(files, project),
-      detectMiddleware(files, project),
-      detectDependencyGraph(files, project),
-    ]);
+  const [rawRoutes, schemas, components, libs, config, middleware, graph] = await Promise.all([
+    detectRoutes(files, project),
+    detectSchemas(files, project),
+    detectComponents(files, project),
+    detectLibs(files, project),
+    detectConfig(files, project),
+    detectMiddleware(files, project),
+    detectDependencyGraph(files, project),
+  ]);
 
   const routes = await enrichRouteContracts(rawRoutes, project);
 
@@ -92,10 +97,7 @@ async function getScanResult(directory?: string): Promise<ScanResult> {
 async function toolScan(args: any): Promise<string> {
   const result = await getScanResult(args.directory);
   const outputContent = await writeOutput(result, resolve(cachedRoot!, ".codesight"));
-  return outputContent.replace(
-    /Saves ~\d[\d,]* tokens/,
-    `Saves ~${result.tokenStats.saved.toLocaleString()} tokens`
-  );
+  return outputContent.replace(/Saves ~\d[\d,]* tokens/, `Saves ~${result.tokenStats.saved.toLocaleString()} tokens`);
 }
 
 async function toolGetRoutes(args: any): Promise<string> {
@@ -121,9 +123,7 @@ async function toolGetRoutes(args: any): Promise<string> {
     return `${r.method} ${r.path}${params}${tags} — ${r.file}`;
   });
 
-  return lines.length > 0
-    ? `${lines.length} routes:\n${lines.join("\n")}`
-    : "No routes found matching filters.";
+  return lines.length > 0 ? `${lines.length} routes:\n${lines.join("\n")}` : "No routes found matching filters.";
 }
 
 async function toolGetSchema(args: any): Promise<string> {
@@ -147,9 +147,7 @@ async function toolGetSchema(args: any): Promise<string> {
     lines.push("");
   }
 
-  return lines.length > 0
-    ? `${models.length} models:\n${lines.join("\n")}`
-    : "No models found.";
+  return lines.length > 0 ? `${models.length} models:\n${lines.join("\n")}` : "No models found.";
 }
 
 async function toolGetBlastRadius(args: any): Promise<string> {
@@ -236,9 +234,7 @@ async function toolGetHotFiles(args: any): Promise<string> {
 
   if (hotFiles.length === 0) return "No import graph data. Run a full scan first.";
 
-  const lines = hotFiles.map((h) =>
-    `${h.file} — imported by ${h.importedBy} files`
-  );
+  const lines = hotFiles.map((h) => `${h.file} — imported by ${h.importedBy} files`);
 
   return `Top ${hotFiles.length} most-imported files (change carefully):\n${lines.join("\n")}`;
 }
@@ -257,24 +253,38 @@ async function toolGetSummary(args: any): Promise<string> {
     lines.push(`Monorepo: ${project.workspaces.map((w) => w.name).join(", ")}`);
   }
   lines.push("");
-  lines.push(`${routes.length} routes | ${schemas.length} models | ${components.length} components | ${config.envVars.length} env vars | ${middleware.length} middleware | ${graph.edges.length} import links`);
+  lines.push(
+    `${routes.length} routes | ${schemas.length} models | ${components.length} components | ${config.envVars.length} env vars | ${middleware.length} middleware | ${graph.edges.length} import links`,
+  );
   lines.push(`Token savings: ~${tokenStats.saved.toLocaleString()} per conversation`);
   lines.push("");
 
   // Top routes summary
   if (routes.length > 0) {
-    lines.push(`Key API areas: ${[...new Set(routes.map((r) => r.path.split("/").slice(0, 3).join("/")))].slice(0, 8).join(", ")}`);
+    lines.push(
+      `Key API areas: ${[...new Set(routes.map((r) => r.path.split("/").slice(0, 3).join("/")))].slice(0, 8).join(", ")}`,
+    );
   }
 
   // Hot files
   if (graph.hotFiles.length > 0) {
-    lines.push(`High-impact files: ${graph.hotFiles.slice(0, 5).map((h) => h.file).join(", ")}`);
+    lines.push(
+      `High-impact files: ${graph.hotFiles
+        .slice(0, 5)
+        .map((h) => h.file)
+        .join(", ")}`,
+    );
   }
 
   // Required env
   const required = config.envVars.filter((e) => !e.hasDefault);
   if (required.length > 0) {
-    lines.push(`Required env: ${required.slice(0, 8).map((e) => e.name).join(", ")}${required.length > 8 ? ` +${required.length - 8} more` : ""}`);
+    lines.push(
+      `Required env: ${required
+        .slice(0, 8)
+        .map((e) => e.name)
+        .join(", ")}${required.length > 8 ? ` +${required.length - 8} more` : ""}`,
+    );
   }
 
   lines.push("");
@@ -366,8 +376,7 @@ const TOOLS = [
   },
   {
     name: "codesight_get_schema",
-    description:
-      "Get database models with fields, types, constraints, and relations. Optionally filter by model name.",
+    description: "Get database models with fields, types, constraints, and relations. Optionally filter by model name.",
     inputSchema: {
       type: "object",
       properties: {
@@ -386,7 +395,11 @@ const TOOLS = [
       properties: {
         directory: { type: "string", description: "Directory (defaults to cwd)" },
         file: { type: "string", description: "Single file path (relative to project root)" },
-        files: { type: "array", items: { type: "string" }, description: "Multiple file paths for combined blast radius" },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description: "Multiple file paths for combined blast radius",
+        },
         depth: { type: "number", description: "Max traversal depth (default: 3)" },
       },
     },
@@ -394,8 +407,7 @@ const TOOLS = [
   },
   {
     name: "codesight_get_env",
-    description:
-      "Get environment variables across the codebase with required/default status and source file.",
+    description: "Get environment variables across the codebase with required/default status and source file.",
     inputSchema: {
       type: "object",
       properties: {
@@ -420,8 +432,7 @@ const TOOLS = [
   },
   {
     name: "codesight_refresh",
-    description:
-      "Force re-scan the project. Use after making significant changes to get updated context.",
+    description: "Force re-scan the project. Use after making significant changes to get updated context.",
     inputSchema: {
       type: "object",
       properties: {
@@ -555,9 +566,21 @@ async function handleRequest(req: JsonRpcRequest) {
 }
 
 export async function startMCPServer() {
+  transportMode = "framed";
   let buffer = "";
   const messageQueue: JsonRpcRequest[] = [];
   let processing = false;
+
+  function enqueueRawJson(raw: string) {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    try {
+      const req = JSON.parse(trimmed) as JsonRpcRequest;
+      messageQueue.push(req);
+    } catch {
+      send({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+    }
+  }
 
   async function processQueue() {
     if (processing) return;
@@ -579,7 +602,18 @@ export async function startMCPServer() {
 
     while (true) {
       const headerEnd = buffer.indexOf("\r\n\r\n");
-      if (headerEnd === -1) break;
+      if (headerEnd === -1) {
+        const newlineIndex = buffer.indexOf("\n");
+        if (newlineIndex === -1) break;
+
+        const line = buffer.substring(0, newlineIndex);
+        buffer = buffer.substring(newlineIndex + 1);
+        transportMode = "newline";
+        enqueueRawJson(line);
+        continue;
+      }
+
+      transportMode = "framed";
 
       const header = buffer.substring(0, headerEnd);
       const lengthMatch = header.match(/Content-Length:\s*(\d+)/i);
@@ -605,6 +639,14 @@ export async function startMCPServer() {
     }
 
     processQueue();
+  });
+
+  process.stdin.on("end", () => {
+    if (buffer.trim()) {
+      enqueueRawJson(buffer);
+      buffer = "";
+      processQueue();
+    }
   });
 
   await new Promise(() => {});
