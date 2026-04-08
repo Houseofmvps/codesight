@@ -27,11 +27,16 @@ export type Framework =
   | "axum"
   | "raw-http"
   | "php"
+  | "laravel"
+  | "aspnet"
+  | "vapor"
+  | "swiftui"
+  | "flutter"
   | "unknown";
 
-export type ORM = "drizzle" | "prisma" | "typeorm" | "sqlalchemy" | "gorm" | "mongoose" | "sequelize" | "activerecord" | "ecto" | "unknown";
+export type ORM = "drizzle" | "prisma" | "typeorm" | "sqlalchemy" | "gorm" | "mongoose" | "sequelize" | "activerecord" | "ecto" | "eloquent" | "entity-framework" | "unknown";
 
-export type ComponentFramework = "react" | "vue" | "svelte" | "unknown";
+export type ComponentFramework = "react" | "vue" | "svelte" | "flutter" | "unknown";
 
 export interface ProjectInfo {
   root: string;
@@ -41,7 +46,7 @@ export interface ProjectInfo {
   componentFramework: ComponentFramework;
   isMonorepo: boolean;
   workspaces: WorkspaceInfo[];
-  language: "typescript" | "javascript" | "python" | "go" | "ruby" | "elixir" | "java" | "kotlin" | "rust" | "php" | "mixed";
+  language: "typescript" | "javascript" | "python" | "go" | "ruby" | "elixir" | "java" | "kotlin" | "rust" | "php" | "dart" | "swift" | "csharp" | "mixed";
 }
 
 export interface WorkspaceInfo {

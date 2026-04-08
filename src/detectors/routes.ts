@@ -4,6 +4,10 @@ import { loadTypeScript } from "../ast/loader.js";
 import { extractRoutesAST } from "../ast/extract-routes.js";
 import { extractPythonRoutesAST } from "../ast/extract-python.js";
 import { extractGoRoutesStructured } from "../ast/extract-go.js";
+import { extractLaravelRoutes } from "../ast/extract-php.js";
+import { extractAspNetControllerRoutes, extractAspNetMinimalApiRoutes } from "../ast/extract-csharp.js";
+import { extractFlutterRoutes } from "../ast/extract-dart.js";
+import { extractVaporRoutes } from "../ast/extract-swift.js";
 import type { RouteInfo, Framework, ProjectInfo } from "../types.js";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
@@ -110,6 +114,18 @@ export async function detectRoutes(
         break;
       case "php":
         routes.push(...(await detectPHPRoutes(files, project)));
+        break;
+      case "laravel":
+        routes.push(...(await detectLaravelRoutes(files, project)));
+        break;
+      case "aspnet":
+        routes.push(...(await detectAspNetRoutes(files, project)));
+        break;
+      case "flutter":
+        routes.push(...(await detectFlutterGoRoutes(files, project)));
+        break;
+      case "vapor":
+        routes.push(...(await detectVaporRoutes(files, project)));
         break;
     }
   }
@@ -1202,6 +1218,113 @@ async function detectPHPRoutes(
     seen.add(key);
     return true;
   });
+}
+
+// ─── Laravel ─────────────────────────────────────────────────────────────────
+
+async function detectLaravelRoutes(
+  files: string[],
+  project: ProjectInfo
+): Promise<RouteInfo[]> {
+  // Laravel routes live in routes/api.php and routes/web.php
+  const routeFiles = files.filter(
+    (f) =>
+      f.endsWith(".php") &&
+      (f.match(/[/\\]routes[/\\]/) || basename(f) === "api.php" || basename(f) === "web.php")
+  );
+  const routes: RouteInfo[] = [];
+
+  for (const file of routeFiles) {
+    const content = await readFileSafe(file);
+    if (!content) continue;
+    const rel = relative(project.root, file).replace(/\\/g, "/");
+    const tags = detectTags(content);
+    routes.push(...extractLaravelRoutes(rel, content, tags));
+  }
+
+  return routes;
+}
+
+// ─── ASP.NET Core ─────────────────────────────────────────────────────────────
+
+async function detectAspNetRoutes(
+  files: string[],
+  project: ProjectInfo
+): Promise<RouteInfo[]> {
+  const csFiles = files.filter((f) => f.endsWith(".cs"));
+  const routes: RouteInfo[] = [];
+
+  for (const file of csFiles) {
+    const content = await readFileSafe(file);
+    if (!content) continue;
+    const rel = relative(project.root, file).replace(/\\/g, "/");
+    const tags = detectTags(content);
+
+    // Controller-style: [HttpGet], [Route] on class
+    if (
+      content.includes("[HttpGet") ||
+      content.includes("[HttpPost") ||
+      content.includes("[HttpPut") ||
+      content.includes("[HttpPatch") ||
+      content.includes("[HttpDelete") ||
+      content.includes("ControllerBase") ||
+      content.includes("Controller")
+    ) {
+      routes.push(...extractAspNetControllerRoutes(rel, content, tags));
+    }
+
+    // Minimal API: app.MapGet(), app.MapPost(), etc. (typically Program.cs)
+    if (content.includes(".Map")) {
+      routes.push(...extractAspNetMinimalApiRoutes(rel, content, tags));
+    }
+  }
+
+  const seen = new Set<string>();
+  return routes.filter((r) => {
+    const key = `${r.method}:${r.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// ─── Flutter (go_router) ─────────────────────────────────────────────────────
+
+async function detectFlutterGoRoutes(
+  files: string[],
+  project: ProjectInfo
+): Promise<RouteInfo[]> {
+  const dartFiles = files.filter((f) => f.endsWith(".dart"));
+  const routes: RouteInfo[] = [];
+
+  for (const file of dartFiles) {
+    const content = await readFileSafe(file);
+    if (!content) continue;
+    if (!content.includes("GoRoute") && !content.includes("go_router")) continue;
+    const rel = relative(project.root, file).replace(/\\/g, "/");
+    routes.push(...extractFlutterRoutes(rel, content, detectTags(content)));
+  }
+
+  return routes;
+}
+
+// ─── Vapor (Swift) ────────────────────────────────────────────────────────────
+
+async function detectVaporRoutes(
+  files: string[],
+  project: ProjectInfo
+): Promise<RouteInfo[]> {
+  const swiftFiles = files.filter((f) => f.endsWith(".swift"));
+  const routes: RouteInfo[] = [];
+
+  for (const file of swiftFiles) {
+    const content = await readFileSafe(file);
+    if (!content) continue;
+    const rel = relative(project.root, file).replace(/\\/g, "/");
+    routes.push(...extractVaporRoutes(rel, content, detectTags(content)));
+  }
+
+  return routes;
 }
 
 // ─── Route Prefix Resolution ──────────────────────────────────────────────────

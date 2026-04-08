@@ -1,5 +1,6 @@
 import { resolve, join } from "node:path";
 import { collectFiles, detectProject } from "./scanner.js";
+import { loadConfig } from "./config.js";
 import { detectRoutes } from "./detectors/routes.js";
 import { detectSchemas } from "./detectors/schema.js";
 import { detectComponents } from "./detectors/components.js";
@@ -50,7 +51,8 @@ async function getScanResult(directory?: string): Promise<ScanResult> {
   if (cachedResult && cachedRoot === root) return cachedResult;
 
   const project = await detectProject(root);
-  const files = await collectFiles(root, 10);
+  const userConfig = await loadConfig(root);
+  const files = await collectFiles(root, userConfig.maxDepth ?? 10, userConfig.ignorePatterns ?? []);
 
   const [rawRoutes, schemas, components, libs, config, middleware, graph] =
     await Promise.all([

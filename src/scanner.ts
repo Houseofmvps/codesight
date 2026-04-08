@@ -51,13 +51,35 @@ const CODE_EXTENSIONS = new Set([
   ".kt",
   ".rs",
   ".php",
+  ".dart",
+  ".swift",
+  ".cs",
 ]);
 
 export async function collectFiles(
   root: string,
-  maxDepth = 10
+  maxDepth = 10,
+  ignorePatterns: string[] = []
 ): Promise<string[]> {
   const files: string[] = [];
+
+  // Build a set of exact dir names to skip (simple patterns like "data", "fixtures")
+  // Also support simple glob-style with trailing /* or /**
+  const extraIgnore = new Set(
+    ignorePatterns.map((p) => p.replace(/\/\*\*?$/, "").replace(/^\//, ""))
+  );
+
+  function shouldIgnoreDir(name: string, fullPath: string): boolean {
+    if (IGNORE_DIRS.has(name)) return true;
+    if (extraIgnore.has(name)) return true;
+    // Check if any pattern matches a path segment
+    const rel = fullPath.replace(root, "").replace(/^[/\\]/, "");
+    for (const pattern of ignorePatterns) {
+      const clean = pattern.replace(/\/\*\*?$/, "").replace(/^\//, "");
+      if (rel === clean || rel.startsWith(clean + "/") || rel.startsWith(clean + "\\")) return true;
+    }
+    return false;
+  }
 
   async function walk(dir: string, depth: number) {
     if (depth > maxDepth) return;
@@ -71,7 +93,7 @@ export async function collectFiles(
       if (entry.name.startsWith(".") && entry.name !== ".env" && entry.name !== ".env.example" && entry.name !== ".env.local") continue;
       const fullPath = join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (IGNORE_DIRS.has(entry.name)) continue;
+        if (shouldIgnoreDir(entry.name, fullPath)) continue;
         await walk(fullPath, depth + 1);
       } else if (entry.isFile()) {
         const ext = extname(entry.name);
@@ -104,9 +126,11 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
   const name = pkg.name || await resolveRepoName(root);
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
-  // Detect monorepo
-  const isMonorepo = !!(pkg.workspaces || await fileExists(join(root, "pnpm-workspace.yaml")));
+  // Detect monorepo — also treat roots with subdirs containing non-JS manifests as monorepos
+  const hasPnpmWorkspace = await fileExists(join(root, "pnpm-workspace.yaml"));
+  const isMonorepo = !!(pkg.workspaces || hasPnpmWorkspace);
   const workspaces: WorkspaceInfo[] = [];
+
   if (isMonorepo) {
     const wsPatterns = await getWorkspacePatterns(root, pkg);
     for (const pattern of wsPatterns) {
@@ -118,29 +142,31 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
           for (const d of wsDirs) {
             if (!d.isDirectory() || d.name.startsWith(".")) continue;
             const wsPath = join(wsRoot, d.name);
-            const wsPkg = await readJsonSafe(join(wsPath, "package.json"));
-            workspaces.push({
-              name: wsPkg.name || d.name,
-              path: relative(root, wsPath),
-              frameworks: await detectFrameworks(wsPath, wsPkg),
-              orms: await detectORMs(wsPath, wsPkg),
-            });
+            const wsInfo = await detectWorkspace(root, wsPath, d.name);
+            if (wsInfo) workspaces.push(wsInfo);
           }
         } catch {}
       } else {
         // Direct path (e.g. "app", "api") — treat the path itself as a workspace
         const wsPath = join(root, pattern);
         try {
-          const wsPkg = await readJsonSafe(join(wsPath, "package.json"));
-          workspaces.push({
-            name: wsPkg.name || basename(pattern),
-            path: pattern,
-            frameworks: await detectFrameworks(wsPath, wsPkg),
-            orms: await detectORMs(wsPath, wsPkg),
-          });
+          const wsInfo = await detectWorkspace(root, wsPath, basename(pattern));
+          if (wsInfo) workspaces.push(wsInfo);
         } catch {}
       }
     }
+  } else {
+    // Even without a declared monorepo manifest, scan top-level subdirs for
+    // non-JS workspaces (e.g. SwiftUI + Laravel side-by-side in one repo)
+    try {
+      const topDirs = await readdir(root, { withFileTypes: true });
+      for (const d of topDirs) {
+        if (!d.isDirectory() || d.name.startsWith(".") || IGNORE_DIRS.has(d.name)) continue;
+        const wsPath = join(root, d.name);
+        const wsInfo = await detectNonJSWorkspace(root, wsPath, d.name);
+        if (wsInfo) workspaces.push(wsInfo);
+      }
+    } catch {}
   }
 
   // For monorepos, aggregate all workspace deps for top-level detection
@@ -178,7 +204,7 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
     name,
     frameworks,
     orms,
-    componentFramework: detectComponentFramework(allDeps),
+    componentFramework: detectComponentFramework(allDeps, frameworks),
     isMonorepo,
     workspaces,
     language,
@@ -292,12 +318,81 @@ async function detectFrameworks(
     } catch {}
   }
 
-  // PHP: composer.json or .php files in root
+  // Laravel vs generic PHP
   const hasComposerJson = await fileExists(join(root, "composer.json"));
-  if (hasComposerJson || (await (async () => {
-    try { return (await readdir(root)).some((e) => e.endsWith(".php")); } catch { return false; }
-  })())) {
-    frameworks.push("php");
+  if (hasComposerJson) {
+    try {
+      const composer = await readFile(join(root, "composer.json"), "utf-8");
+      if (composer.includes("laravel/framework")) {
+        frameworks.push("laravel");
+      } else {
+        frameworks.push("php");
+      }
+    } catch {
+      frameworks.push("php");
+    }
+  } else {
+    // Check for .php files in root as fallback
+    try {
+      const hasPhpFiles = (await readdir(root)).some((e) => e.endsWith(".php"));
+      if (hasPhpFiles) frameworks.push("php");
+    } catch {}
+  }
+
+  // ASP.NET Core
+  const hasCsprojOrSln =
+    (await fileExists(join(root, "*.csproj")).then(() => false).catch(() => false)) ||
+    (await (async () => {
+      try {
+        const entries = await readdir(root);
+        return entries.some((e) => e.endsWith(".csproj") || e.endsWith(".sln"));
+      } catch { return false; }
+    })());
+  if (hasCsprojOrSln) {
+    try {
+      const entries = await readdir(root);
+      const csproj = entries.find((e) => e.endsWith(".csproj"));
+      if (csproj) {
+        const content = await readFile(join(root, csproj), "utf-8");
+        if (content.includes("Microsoft.AspNetCore") || content.includes("web")) {
+          frameworks.push("aspnet");
+        }
+      }
+    } catch {}
+  }
+
+  // Flutter
+  const hasPubspec = await fileExists(join(root, "pubspec.yaml"));
+  if (hasPubspec) {
+    try {
+      const pubspec = await readFile(join(root, "pubspec.yaml"), "utf-8");
+      if (pubspec.includes("flutter:") || pubspec.includes("flutter_")) {
+        frameworks.push("flutter");
+      }
+    } catch {}
+  }
+
+  // Swift: Vapor vs SwiftUI
+  const hasPackageSwift = await fileExists(join(root, "Package.swift"));
+  if (hasPackageSwift) {
+    try {
+      const pkg = await readFile(join(root, "Package.swift"), "utf-8");
+      if (pkg.includes("vapor/vapor") || pkg.includes('"vapor"')) {
+        frameworks.push("vapor");
+      } else {
+        frameworks.push("swiftui");
+      }
+    } catch {
+      frameworks.push("swiftui");
+    }
+  } else {
+    // .xcodeproj presence → SwiftUI project
+    try {
+      const entries = await readdir(root);
+      if (entries.some((e) => e.endsWith(".xcodeproj") || e.endsWith(".xcworkspace"))) {
+        frameworks.push("swiftui");
+      }
+    } catch {}
   }
 
   // Fallback: detect raw http.createServer if no other frameworks found
@@ -345,22 +440,45 @@ async function detectORMs(
     } catch {}
   }
 
+  // Eloquent (Laravel — always bundled when laravel/framework is present)
+  const composerPath = join(root, "composer.json");
+  if (await fileExists(composerPath)) {
+    try {
+      const composer = await readFile(composerPath, "utf-8");
+      if (composer.includes("laravel/framework")) orms.push("eloquent");
+    } catch {}
+  }
+
+  // Entity Framework (ASP.NET)
+  try {
+    const entries = await readdir(root);
+    const csproj = entries.find((e) => e.endsWith(".csproj"));
+    if (csproj) {
+      const content = await readFile(join(root, csproj), "utf-8");
+      if (content.includes("EntityFramework") || content.includes("Microsoft.EntityFrameworkCore")) {
+        orms.push("entity-framework");
+      }
+    }
+  } catch {}
+
   return orms;
 }
 
 function detectComponentFramework(
-  deps: Record<string, string>
+  deps: Record<string, string>,
+  frameworks: Framework[] = []
 ): ComponentFramework {
   if (deps["react"] || deps["react-dom"]) return "react";
   if (deps["vue"]) return "vue";
   if (deps["svelte"]) return "svelte";
+  if (frameworks.includes("flutter")) return "flutter";
   return "unknown";
 }
 
 async function detectLanguage(
   root: string,
   deps: Record<string, string>
-): Promise<"typescript" | "javascript" | "python" | "go" | "ruby" | "elixir" | "java" | "kotlin" | "rust" | "php" | "mixed"> {
+): Promise<"typescript" | "javascript" | "python" | "go" | "ruby" | "elixir" | "java" | "kotlin" | "rust" | "php" | "dart" | "swift" | "csharp" | "mixed"> {
   const hasTsConfig = await fileExists(join(root, "tsconfig.json"));
   const hasPyProject = await fileExists(join(root, "pyproject.toml")) || await fileExists(join(root, "backend/pyproject.toml"));
   const hasGoMod = await fileExists(join(root, "go.mod"));
@@ -371,6 +489,11 @@ async function detectLanguage(
   const hasBuildGradle = await fileExists(join(root, "build.gradle")) || await fileExists(join(root, "build.gradle.kts"));
   const hasCargoToml = await fileExists(join(root, "Cargo.toml"));
   const hasComposerJson = await fileExists(join(root, "composer.json"));
+  const hasPubspec = await fileExists(join(root, "pubspec.yaml"));
+  const hasPackageSwift = await fileExists(join(root, "Package.swift"));
+  const hasCsproj = await (async () => {
+    try { return (await readdir(root)).some((e) => e.endsWith(".csproj") || e.endsWith(".sln")); } catch { return false; }
+  })();
 
   const langs: string[] = [];
   if (hasTsConfig || deps["typescript"]) langs.push("typescript");
@@ -382,6 +505,9 @@ async function detectLanguage(
   else if (hasPomXml) langs.push("java");
   if (hasCargoToml) langs.push("rust");
   if (hasComposerJson) langs.push("php");
+  if (hasPubspec) langs.push("dart");
+  if (hasPackageSwift) langs.push("swift");
+  if (hasCsproj) langs.push("csharp");
 
   if (langs.length > 1) return "mixed";
   if (langs.length === 1) return langs[0] as any;
@@ -389,11 +515,120 @@ async function detectLanguage(
   // Fallback: detect by file extensions present in root
   try {
     const entries = await readdir(root);
-    const hasPHPFiles = entries.some((e) => e.endsWith(".php"));
-    if (hasPHPFiles) return "php";
+    if (entries.some((e) => e.endsWith(".php"))) return "php";
+    if (entries.some((e) => e.endsWith(".swift"))) return "swift";
+    if (entries.some((e) => e.endsWith(".cs"))) return "csharp";
+    if (entries.some((e) => e.endsWith(".dart"))) return "dart";
   } catch {}
 
   return "javascript";
+}
+
+/**
+ * Detect a workspace dir — handles both JS (package.json) and non-JS manifests.
+ * Returns null if the dir has no recognisable project manifest.
+ */
+async function detectWorkspace(
+  repoRoot: string,
+  wsPath: string,
+  dirName: string
+): Promise<WorkspaceInfo | null> {
+  // JS workspace
+  const wsPkg = await readJsonSafe(join(wsPath, "package.json"));
+  if (wsPkg.name || wsPkg.dependencies || wsPkg.devDependencies) {
+    return {
+      name: wsPkg.name || dirName,
+      path: relative(repoRoot, wsPath),
+      frameworks: await detectFrameworks(wsPath, wsPkg),
+      orms: await detectORMs(wsPath, wsPkg),
+    };
+  }
+  // Non-JS workspace (Laravel, Flutter, Swift, C#)
+  return detectNonJSWorkspace(repoRoot, wsPath, dirName);
+}
+
+/**
+ * Detect a non-JS workspace by checking for language-specific manifest files.
+ * Returns null if none found (plain directory with no recognised project).
+ */
+async function detectNonJSWorkspace(
+  repoRoot: string,
+  wsPath: string,
+  dirName: string
+): Promise<WorkspaceInfo | null> {
+  const frameworks: Framework[] = [];
+  const orms: ORM[] = [];
+
+  // Laravel / PHP
+  const composerPath = join(wsPath, "composer.json");
+  if (await fileExists(composerPath)) {
+    try {
+      const composer = await readFile(composerPath, "utf-8");
+      if (composer.includes("laravel/framework")) {
+        frameworks.push("laravel");
+        orms.push("eloquent");
+      } else {
+        frameworks.push("php");
+      }
+    } catch {
+      frameworks.push("php");
+    }
+  }
+
+  // Flutter / Dart
+  const pubspecPath = join(wsPath, "pubspec.yaml");
+  if (await fileExists(pubspecPath)) {
+    try {
+      const pubspec = await readFile(pubspecPath, "utf-8");
+      if (pubspec.includes("flutter:") || pubspec.includes("flutter_")) {
+        frameworks.push("flutter");
+      }
+    } catch {
+      frameworks.push("flutter");
+    }
+  }
+
+  // Swift — Vapor or SwiftUI
+  const packageSwiftPath = join(wsPath, "Package.swift");
+  if (await fileExists(packageSwiftPath)) {
+    try {
+      const pkg = await readFile(packageSwiftPath, "utf-8");
+      frameworks.push(pkg.includes("vapor/vapor") || pkg.includes('"vapor"') ? "vapor" : "swiftui");
+    } catch {
+      frameworks.push("swiftui");
+    }
+  } else {
+    try {
+      const entries = await readdir(wsPath);
+      if (entries.some((e) => e.endsWith(".xcodeproj") || e.endsWith(".xcworkspace"))) {
+        frameworks.push("swiftui");
+      }
+    } catch {}
+  }
+
+  // C# / ASP.NET
+  try {
+    const entries = await readdir(wsPath);
+    const csproj = entries.find((e) => e.endsWith(".csproj"));
+    if (csproj) {
+      const content = await readFile(join(wsPath, csproj), "utf-8");
+      if (content.includes("Microsoft.AspNetCore") || content.includes("web")) {
+        frameworks.push("aspnet");
+      }
+      if (content.includes("EntityFramework") || content.includes("Microsoft.EntityFrameworkCore")) {
+        orms.push("entity-framework");
+      }
+    }
+  } catch {}
+
+  if (frameworks.length === 0) return null;
+
+  return {
+    name: dirName,
+    path: relative(repoRoot, wsPath),
+    frameworks,
+    orms,
+  };
 }
 
 async function getWorkspacePatterns(

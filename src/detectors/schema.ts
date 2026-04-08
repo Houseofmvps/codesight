@@ -4,6 +4,8 @@ import { loadTypeScript } from "../ast/loader.js";
 import { extractDrizzleSchemaAST, extractTypeORMSchemaAST } from "../ast/extract-schema.js";
 import { extractSQLAlchemyAST } from "../ast/extract-python.js";
 import { extractGORMModelsStructured } from "../ast/extract-go.js";
+import { extractEloquentModels } from "../ast/extract-php.js";
+import { extractEntityFrameworkModels } from "../ast/extract-csharp.js";
 import type { SchemaModel, SchemaField, ProjectInfo } from "../types.js";
 
 const AUDIT_FIELDS = new Set([
@@ -37,6 +39,12 @@ export async function detectSchemas(
         break;
       case "gorm":
         models.push(...(await detectGORMSchemas(files, project)));
+        break;
+      case "eloquent":
+        models.push(...(await detectEloquentSchemas(files, project)));
+        break;
+      case "entity-framework":
+        models.push(...(await detectEntityFrameworkSchemas(files, project)));
         break;
     }
   }
@@ -380,6 +388,42 @@ async function detectGORMSchemas(
     const rel = relative(_project.root, file);
     const structModels = extractGORMModelsStructured(rel, content);
     models.push(...structModels);
+  }
+
+  return models;
+}
+
+// --- Eloquent (Laravel) ---
+async function detectEloquentSchemas(
+  files: string[],
+  project: ProjectInfo
+): Promise<SchemaModel[]> {
+  const phpFiles = files.filter((f) => f.endsWith(".php"));
+  const models: SchemaModel[] = [];
+
+  for (const file of phpFiles) {
+    const content = await readFileSafe(file);
+    if (!content.includes("extends") || !content.includes("Model")) continue;
+    const rel = relative(project.root, file);
+    models.push(...extractEloquentModels(rel, content));
+  }
+
+  return models;
+}
+
+// --- Entity Framework (ASP.NET) ---
+async function detectEntityFrameworkSchemas(
+  files: string[],
+  project: ProjectInfo
+): Promise<SchemaModel[]> {
+  const csFiles = files.filter((f) => f.endsWith(".cs"));
+  const models: SchemaModel[] = [];
+
+  for (const file of csFiles) {
+    const content = await readFileSafe(file);
+    if (!content.includes("DbContext") && !content.includes("DbSet<")) continue;
+    const rel = relative(project.root, file);
+    models.push(...extractEntityFrameworkModels(rel, content));
   }
 
   return models;

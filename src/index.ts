@@ -96,7 +96,7 @@ async function scan(root: string, outputDirName: string, maxDepth: number, userC
 
   // Step 2: Collect files
   process.stdout.write("  Collecting files...");
-  const files = await collectFiles(root, maxDepth);
+  const files = await collectFiles(root, maxDepth, userConfig.ignorePatterns ?? []);
   console.log(` ${files.length} files`);
 
   // Step 3: Run all detectors in parallel (respecting disableDetectors config)

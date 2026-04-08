@@ -2,9 +2,9 @@
 
 ### Your AI assistant wastes thousands of tokens every conversation just figuring out your project. codesight fixes that in one command.
 
-**Zero dependencies. AST precision. 25+ framework detectors. 8 ORM parsers. 11 MCP tools. One `npx` call.**
+**Zero dependencies. AST precision. 30+ framework detectors. 10 ORM parsers. 11 MCP tools. One `npx` call.**
 
-**Works with TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust, and PHP.** TypeScript projects get full AST precision. Everything else uses battle-tested regex detection across the same 25+ frameworks.
+**Works with TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust, PHP, Dart, Swift, and C#.** TypeScript projects get full AST precision. Everything else uses battle-tested regex detection across the same 30+ frameworks.
 
 [![npm version](https://img.shields.io/npm/v/codesight?style=for-the-badge&logo=npm&color=CB3837)](https://www.npmjs.com/package/codesight)
 [![npm downloads](https://img.shields.io/npm/dm/codesight?style=for-the-badge&logo=npm&color=blue&label=Monthly%20Downloads)](https://www.npmjs.com/package/codesight)
@@ -388,15 +388,15 @@ The 1.3x multiplier accounts for AI revisiting files during multi-turn conversat
 
 | Category | Supported |
 |---|---|
-| **Routes** | Hono, Express, Fastify, Next.js (App + Pages), Koa, NestJS, tRPC, Elysia, AdonisJS, SvelteKit, Remix, Nuxt, FastAPI, Flask, Django, Go (net/http, Gin, Fiber, Echo, Chi), Rails, Phoenix, Spring Boot, Actix, Axum, raw http.createServer |
-| **Schema** | Drizzle, Prisma, TypeORM, Mongoose, Sequelize, SQLAlchemy, ActiveRecord, Ecto (8 ORMs) |
-| **Components** | React, Vue, Svelte (auto-filters shadcn/ui and Radix primitives) |
-| **Libraries** | TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust (exports with function signatures) |
+| **Routes** | Hono, Express, Fastify, Next.js (App + Pages), Koa, NestJS, tRPC, Elysia, AdonisJS, SvelteKit, Remix, Nuxt, FastAPI, Flask, Django, Go (net/http, Gin, Fiber, Echo, Chi), Rails, Phoenix, Spring Boot, Actix, Axum, Laravel, ASP.NET Core (controllers + minimal API), Vapor, Flutter (go_router), raw http.createServer |
+| **Schema** | Drizzle, Prisma, TypeORM, Mongoose, Sequelize, SQLAlchemy, ActiveRecord, Ecto, Eloquent, Entity Framework (10 ORMs) |
+| **Components** | React, Vue, Svelte, Flutter widgets (StatelessWidget, StatefulWidget, ConsumerWidget), SwiftUI views (auto-filters shadcn/ui and Radix primitives) |
+| **Libraries** | TypeScript, JavaScript, Python, Go, Dart, Swift, C#, PHP (exports with function signatures) |
 | **Middleware** | Auth, rate limiting, CORS, validation, logging, error handlers |
 | **Dependencies** | Import graph with hot file detection (most imported = highest blast radius) |
 | **Contracts** | URL params, request types, response types from route handlers |
-| **Monorepos** | pnpm, npm, yarn workspaces (cross-workspace detection) |
-| **Languages** | TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust, PHP |
+| **Monorepos** | pnpm, npm, yarn workspaces + mixed-language workspaces (e.g. Next.js + Laravel, SwiftUI + Vapor) |
+| **Languages** | TypeScript, JavaScript, Python, Go, Ruby, Elixir, Java, Kotlin, Rust, PHP, Dart, Swift, C# |
 
 ## AI Config Generation
 

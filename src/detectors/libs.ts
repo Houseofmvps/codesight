@@ -1,5 +1,9 @@
 import { relative, extname } from "node:path";
 import { readFileSafe } from "../scanner.js";
+import { extractDartExports } from "../ast/extract-dart.js";
+import { extractSwiftExports } from "../ast/extract-swift.js";
+import { extractCSharpExports } from "../ast/extract-csharp.js";
+import { extractPhpExports } from "../ast/extract-php.js";
 import type { LibExport, ExportItem, ProjectInfo } from "../types.js";
 
 const SKIP_DIRS = [
@@ -22,11 +26,13 @@ export async function detectLibs(
 ): Promise<LibExport[]> {
   const libFiles = files.filter((f) => {
     const ext = extname(f);
-    if (![".ts", ".js", ".mjs", ".py", ".go"].includes(ext)) return false;
+    if (![".ts", ".js", ".mjs", ".py", ".go", ".dart", ".swift", ".cs", ".php"].includes(ext)) return false;
     if (f.endsWith(".test.ts") || f.endsWith(".spec.ts")) return false;
     if (f.endsWith(".test.js") || f.endsWith(".spec.js")) return false;
     if (f.endsWith(".d.ts")) return false;
     if (f.endsWith("_test.py") || f.endsWith("_test.go")) return false;
+    if (f.endsWith("_test.dart") || f.endsWith(".g.dart")) return false;
+    if (f.endsWith("Tests.swift") || f.endsWith("_test.swift")) return false;
     // Skip component/page/route files
     if (f.endsWith(".tsx") || f.endsWith(".jsx")) return false;
     if (SKIP_DIRS.some((d) => f.includes(d))) return false;
@@ -47,6 +53,14 @@ export async function detectLibs(
       exports = extractPythonExports(content);
     } else if (ext === ".go") {
       exports = extractGoExports(content);
+    } else if (ext === ".dart") {
+      exports = extractDartExports(content);
+    } else if (ext === ".swift") {
+      exports = extractSwiftExports(content);
+    } else if (ext === ".cs") {
+      exports = extractCSharpExports(content);
+    } else if (ext === ".php") {
+      exports = extractPhpExports(content);
     } else {
       exports = extractTSExports(content);
     }

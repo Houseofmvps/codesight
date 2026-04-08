@@ -2,6 +2,8 @@ import { relative, basename, extname } from "node:path";
 import { readFileSafe } from "../scanner.js";
 import { loadTypeScript } from "../ast/loader.js";
 import { extractReactComponentsAST } from "../ast/extract-components.js";
+import { extractFlutterWidgets } from "../ast/extract-dart.js";
+import { extractSwiftUIViews } from "../ast/extract-swift.js";
 import type { ComponentInfo, ProjectInfo } from "../types.js";
 
 // shadcn/ui + radix primitives to filter out
@@ -80,8 +82,18 @@ export async function detectComponents(
       return detectVueComponents(files, project);
     case "svelte":
       return detectSvelteComponents(files, project);
-    default:
+    case "flutter":
+      return detectFlutterComponents(files, project);
+    default: {
+      // SwiftUI: no componentFramework flag — detect if swiftui/vapor framework present
+      if (
+        project.frameworks.includes("swiftui") ||
+        project.frameworks.includes("vapor")
+      ) {
+        return detectSwiftUIComponents(files, project);
+      }
       return [];
+    }
   }
 }
 
@@ -303,6 +315,47 @@ async function detectSvelteComponents(
       isClient: true,
       isServer: false,
     });
+  }
+
+  return components;
+}
+
+// --- Flutter Widgets ---
+async function detectFlutterComponents(
+  files: string[],
+  project: ProjectInfo
+): Promise<ComponentInfo[]> {
+  const dartFiles = files.filter(
+    (f) => f.endsWith(".dart") && !f.includes("_test.dart") && !f.includes(".g.dart")
+  );
+  const components: ComponentInfo[] = [];
+
+  for (const file of dartFiles) {
+    const content = await readFileSafe(file);
+    if (!content) continue;
+    const rel = relative(project.root, file);
+    components.push(...extractFlutterWidgets(rel, content));
+  }
+
+  return components;
+}
+
+// --- SwiftUI Views ---
+async function detectSwiftUIComponents(
+  files: string[],
+  project: ProjectInfo
+): Promise<ComponentInfo[]> {
+  const swiftFiles = files.filter(
+    (f) => f.endsWith(".swift") && !f.includes("Tests/") && !f.includes("_test.swift")
+  );
+  const components: ComponentInfo[] = [];
+
+  for (const file of swiftFiles) {
+    const content = await readFileSafe(file);
+    if (!content) continue;
+    if (!content.includes(": View") && !content.includes(":View")) continue;
+    const rel = relative(project.root, file);
+    components.push(...extractSwiftUIViews(rel, content));
   }
 
   return components;
