@@ -66,7 +66,25 @@ function extractHttpFrameworkRoutes(
   // Track router.use('/prefix', subRouter) for prefix resolution
   const prefixMap = new Map<string, string>(); // variable name -> prefix
 
+  // Track createRoute() definitions: variable name -> { method, path }
+  const routeDefMap = new Map<string, { method: string; path: string }>();
+
   function visit(node: any) {
+    // Track createRoute({ method, path }) variable assignments
+    if (node.kind === SK.VariableStatement) {
+      for (const decl of node.declarationList?.declarations || []) {
+        if (decl.initializer?.kind === SK.CallExpression) {
+          const callee = decl.initializer.expression;
+          if (callee?.kind === SK.Identifier && getText(sf, callee) === "createRoute") {
+            const routeDef = extractCreateRouteArgs(ts, sf, decl.initializer);
+            if (routeDef && decl.name?.kind === SK.Identifier) {
+              routeDefMap.set(getText(sf, decl.name), routeDef);
+            }
+          }
+        }
+      }
+    }
+
     if (node.kind === SK.CallExpression) {
       const expr = node.expression;
 
@@ -87,6 +105,47 @@ function extractHttpFrameworkRoutes(
             const prefix = first.text;
             const routerVar = getText(sf, second);
             prefixMap.set(routerVar, prefix);
+          }
+        }
+
+        // .openapi(routeDef, handler) — resolve createRoute() definitions
+        if (methodName === "openapi" && node.arguments?.length > 0) {
+          const routeArg = node.arguments[0];
+
+          // Inline createRoute({ method, path }) call
+          if (routeArg.kind === SK.CallExpression) {
+            const callee = routeArg.expression;
+            if (callee?.kind === SK.Identifier && getText(sf, callee) === "createRoute") {
+              const routeDef = extractCreateRouteArgs(ts, sf, routeArg);
+              if (routeDef) {
+                routes.push({
+                  method: routeDef.method.toUpperCase(),
+                  path: routeDef.path,
+                  file: filePath,
+                  tags,
+                  framework,
+                  params: extractPathParams(routeDef.path),
+                  confidence: "ast",
+                });
+              }
+            }
+          }
+
+          // Variable reference: .openapi(getActiveRoute, handler)
+          if (routeArg.kind === SK.Identifier) {
+            const varName = getText(sf, routeArg);
+            const routeDef = routeDefMap.get(varName);
+            if (routeDef) {
+              routes.push({
+                method: routeDef.method.toUpperCase(),
+                path: routeDef.path,
+                file: filePath,
+                tags,
+                framework,
+                params: extractPathParams(routeDef.path),
+                confidence: "ast",
+              });
+            }
           }
         }
 
@@ -139,6 +198,35 @@ function extractHttpFrameworkRoutes(
 
   visit(sf);
   return routes;
+}
+
+/** Extract method and path from createRoute({ method: '...', path: '...' }) */
+function extractCreateRouteArgs(
+  ts: any,
+  sf: any,
+  callExpr: any
+): { method: string; path: string } | null {
+  const SK = ts.SyntaxKind;
+  if (!callExpr.arguments?.length) return null;
+  const arg = callExpr.arguments[0];
+  if (arg.kind !== SK.ObjectLiteralExpression) return null;
+
+  let method: string | null = null;
+  let path: string | null = null;
+
+  for (const prop of arg.properties || []) {
+    if (prop.kind !== SK.PropertyAssignment || !prop.name) continue;
+    const name = getText(sf, prop.name);
+    const val = prop.initializer;
+    if (name === "method" && (val.kind === SK.StringLiteral || val.kind === SK.NoSubstitutionTemplateLiteral)) {
+      method = val.text;
+    }
+    if (name === "path" && (val.kind === SK.StringLiteral || val.kind === SK.NoSubstitutionTemplateLiteral)) {
+      path = val.text;
+    }
+  }
+
+  return method && path ? { method, path } : null;
 }
 
 // ─── NestJS ───

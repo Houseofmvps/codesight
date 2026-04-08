@@ -1224,12 +1224,15 @@ async function resolveRoutePrefixes(
   const prefixMap = new Map<string, string>();
 
   // Entry point files where mount registrations live
+  const wsNames = project.workspaces.map(w => w.path.replace(/\\/g, "/"));
   const entryFiles = files.filter(f => {
     const rel = relative(project.root, f).replace(/\\/g, "/");
     return (
       /^(?:src\/)?(?:index|server|app|main)\.(ts|js|mjs|py)$/.test(rel) ||
       /^apps\/[^/]+\/(?:src\/)?(?:index|server|app|main)\.(ts|js|mjs)$/.test(rel) ||
-      /^backend\/(?:server|app|main)\.py$/.test(rel)
+      /^backend\/(?:server|app|main)\.py$/.test(rel) ||
+      // Monorepo workspace entry points (e.g. api/src/app.ts)
+      wsNames.some(ws => new RegExp(`^${ws}/(?:src/)?(?:index|server|app|main)\\.(ts|js|mjs)$`).test(rel))
     );
   });
 
@@ -1248,7 +1251,7 @@ async function resolveRoutePrefixes(
   if (prefixMap.size === 0) return routes;
 
   return routes.map(route => {
-    const prefix = prefixMap.get(route.file);
+    const prefix = prefixMap.get(route.file.replace(/\\/g, "/"));
     if (!prefix || prefix === "/") return route;
     // Don't double-prefix if path already starts with it
     if (route.path.startsWith(prefix + "/") || route.path === prefix) return route;
