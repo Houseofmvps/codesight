@@ -121,8 +121,8 @@ export async function detectMiddleware(
     if (!content) continue;
     const rel = relative(project.root, file);
 
-    // app.use(cors()) or app.use(rateLimit(...))
-    const usePattern = /\.use\s*\(\s*(\w+)\s*\(/g;
+    // app.use(cors()), app.use(express.json()), app.use("/api", authMw())
+    const usePattern = /\.use\s*\(\s*(?:['"`][^'"`]*['"`]\s*,\s*)?([\w.]+)\s*[\(,)]/g;
     let match;
     while ((match = usePattern.exec(content)) !== null) {
       const fnName = match[1];
