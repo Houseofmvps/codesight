@@ -752,6 +752,18 @@ async function detectNonJSWorkspace(
     }
   } catch {}
 
+  // Python frameworks - FastAPI, Flask, Django
+  try {
+    const pyDeps = await getPythonDeps(wsPath);
+    if (pyDeps.includes("fastapi")) frameworks.push("fastapi");
+    if (pyDeps.includes("sqlalchemy") || pyDeps.includes("sqlmodel")) orms.push("sqlalchemy");
+    if (pyDeps.includes("flask")) frameworks.push("flask");
+    if (pyDeps.includes("django")) {
+      frameworks.push("django");
+      orms.push("django");
+    }
+  } catch {}
+
   if (frameworks.length === 0) return null;
 
   return {
@@ -808,7 +820,15 @@ async function parsePythonRequirements(content: string, root: string, deps: stri
 async function getPythonDeps(root: string): Promise<string[]> {
   const deps: string[] = [];
   // Check root and common subdirectories
-  const searchDirs = [root, join(root, "backend"), join(root, "api"), join(root, "server"), join(root, "src")];
+  const searchDirs = [root];
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && !entry.name.startsWith(".") && !IGNORE_DIRS.has(entry.name)) {
+        searchDirs.push(join(root, entry.name));
+      }
+    }
+  } catch {}
   for (const dir of searchDirs) {
     try {
       const req = await readFile(join(dir, "requirements.txt"), "utf-8");
