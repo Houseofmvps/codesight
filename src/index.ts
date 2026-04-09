@@ -522,8 +522,8 @@ async function main() {
   let sinceFiles: Set<string> | null = null;
   if (doSince) {
     try {
-      const { execSync } = await import("node:child_process");
-      const changed = execSync(`git diff --name-only ${doSince}`, { cwd: root }).toString().trim();
+      const { execFileSync } = await import("node:child_process");
+      const changed = execFileSync("git", ["diff", "--name-only", doSince], { cwd: root }).toString().trim();
       if (changed) {
         sinceFiles = new Set(changed.split("\n").map((f) => f.trim()));
         console.log(`  --since ${doSince}: ${sinceFiles.size} changed files`);
