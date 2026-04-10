@@ -1,9 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const FIXTURE_ROOT = join(import.meta.dirname!, "fixtures");
+const FIXTURE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 async function writeFixture(subdir: string, files: Record<string, string>) {
   const dir = join(FIXTURE_ROOT, subdir);
@@ -27,6 +28,34 @@ async function loadModules() {
   const { detectConfig } = await import("../dist/detectors/config.js");
   const { detectLibs } = await import("../dist/detectors/libs.js");
   return { collectFiles, detectProject, detectRoutes, detectSchemas, detectComponents, detectDependencyGraph, detectMiddleware, detectConfig, detectLibs };
+}
+
+async function assertFastApiSqlAlchemyDetection(mods: any, dir: string, workspacePath: string, forbiddenWorkspacePaths: string[] = []) {
+  const project = await mods.detectProject(dir);
+  assert.ok(project.frameworks.includes("fastapi"), `Expected fastapi in frameworks, got ${project.frameworks.join(", ")}`);
+  assert.ok(project.orms.includes("sqlalchemy"), `Expected sqlalchemy in ORMs, got ${project.orms.join(", ")}`);
+  for (const forbiddenPath of forbiddenWorkspacePaths) {
+    assert.ok(!project.workspaces.some((w: any) => w.path === forbiddenPath), `Did not expect workspace ${forbiddenPath}, got ${project.workspaces.map((w: any) => w.path).join(", ")}`);
+  }
+
+  const workspace = project.workspaces.find((w: any) => w.path === workspacePath);
+  assert.ok(workspace, `Expected workspace ${workspacePath}, got ${project.workspaces.map((w: any) => w.path).join(", ")}`);
+  assert.ok(workspace.frameworks.includes("fastapi"), `Expected fastapi in workspace frameworks, got ${workspace.frameworks.join(", ")}`);
+  assert.ok(workspace.orms.includes("sqlalchemy"), `Expected sqlalchemy in workspace ORMs, got ${workspace.orms.join(", ")}`);
+
+  const files = await mods.collectFiles(dir);
+  const routes = await mods.detectRoutes(files, project);
+  const schemas = await mods.detectSchemas(files, project);
+
+  assert.ok(routes.some((r: any) => r.method === "GET" && r.path === "/health"), `Expected GET /health route, got ${routes.map((r: any) => `${r.method} ${r.path}`).join(", ")}`);
+  assert.ok(routes.some((r: any) => r.method === "POST" && r.path === "/users"), `Expected POST /users route, got ${routes.map((r: any) => `${r.method} ${r.path}`).join(", ")}`);
+
+  const userSchema = schemas.find((s: any) => s.name === "User");
+  const postSchema = schemas.find((s: any) => s.name === "Post");
+  assert.ok(userSchema, `Expected User schema, got ${schemas.map((s: any) => s.name).join(", ")}`);
+  assert.ok(postSchema, `Expected Post schema, got ${schemas.map((s: any) => s.name).join(", ")}`);
+  assert.ok(userSchema.fields.some((f: any) => f.name === "email" && f.flags.includes("unique")));
+  assert.ok(postSchema.fields.some((f: any) => f.name === "user_id" && f.flags.includes("fk")));
 }
 
 // =================== ROUTE DETECTION TESTS ===================
@@ -495,5 +524,181 @@ describe("Framework Detection", async () => {
     assert.ok(project.workspaces.length >= 2);
     assert.ok(project.frameworks.includes("hono"));
     assert.equal(project.componentFramework, "react");
+  });
+});
+
+describe("Python Workspace Subdirectory Detection", async () => {
+  const mods = await loadModules();
+
+  it("detects FastAPI and SQLAlchemy in a custom-named root subdirectory", async () => {
+    const dir = await writeFixture("python-custom-subdir-root", {
+      "package.json": JSON.stringify({ name: "test", dependencies: { react: "^18.0.0" } }),
+      "src/App.tsx": `export default function App() { return <main>web</main>; }`,
+      "my-service-api/requirements.txt": "fastapi\nsqlalchemy\nuvicorn\n",
+      "my-service-api/main.py": `from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/users")
+def create_user():
+    return {"created": True}
+`,
+      "my-service-api/models.py": `from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    posts = relationship("Post")
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User")
+`,
+    });
+
+    await assertFastApiSqlAlchemyDetection(mods, dir, "my-service-api");
+  });
+
+  it("detects FastAPI and SQLAlchemy in a custom-named services workspace", async () => {
+    const dir = await writeFixture("python-custom-subdir-workspaces", {
+      "package.json": JSON.stringify({ name: "test", workspaces: ["apps/*", "services/*"] }),
+      "apps/web/package.json": JSON.stringify({ name: "@test/web", dependencies: { react: "^18.0.0" } }),
+      "apps/web/src/App.tsx": `export default function App() { return <main>web</main>; }`,
+      "services/my-backend-service/requirements.txt": "fastapi\nsqlalchemy\nuvicorn\n",
+      "services/my-backend-service/main.py": `from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/users")
+def create_user():
+    return {"created": True}
+`,
+      "services/my-backend-service/models.py": `from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    posts = relationship("Post")
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User")
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    assert.equal(project.isMonorepo, true);
+    await assertFastApiSqlAlchemyDetection(mods, dir, "services/my-backend-service", ["services"]);
+  });
+
+  it("detects FastAPI and SQLAlchemy from pyproject.toml in a custom workspace directory", async () => {
+    const dir = await writeFixture("python-custom-subdir-pyproject", {
+      "package.json": JSON.stringify({ name: "test", workspaces: ["apps/*", "services/*"] }),
+      "apps/web/package.json": JSON.stringify({ name: "@test/web", dependencies: { react: "^18.0.0" } }),
+      "services/custom-api/pyproject.toml": `[project]
+name = "custom-api"
+version = "0.1.0"
+dependencies = [
+  "fastapi>=0.110.0",
+  "sqlalchemy>=2.0.0",
+  "uvicorn>=0.29.0",
+]
+`,
+      "services/custom-api/main.py": `from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/users")
+def create_user():
+    return {"created": True}
+`,
+      "services/custom-api/models.py": `from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    posts = relationship("Post")
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User")
+`,
+    });
+
+    await assertFastApiSqlAlchemyDetection(mods, dir, "services/custom-api", ["services"]);
+  });
+
+  it("detects an undeclared FastAPI backend nested under a container directory in a declared monorepo", async () => {
+    const dir = await writeFixture("python-nested-container-backend", {
+      "package.json": JSON.stringify({ name: "test", workspaces: ["apps/*"] }),
+      "apps/web/package.json": JSON.stringify({ name: "@test/web", dependencies: { react: "^18.0.0" } }),
+      "apps/web/src/App.tsx": `export default function App() { return <main>web</main>; }`,
+      "container-dir/custom-python-backend/requirements.txt": "fastapi\nsqlalchemy\nuvicorn\n",
+      "container-dir/custom-python-backend/main.py": `from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/users")
+def create_user():
+    return {"created": True}
+`,
+      "container-dir/custom-python-backend/models.py": `from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    posts = relationship("Post")
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User")
+`,
+    });
+
+    await assertFastApiSqlAlchemyDetection(mods, dir, "container-dir/custom-python-backend", ["container-dir"]);
   });
 });

@@ -212,39 +212,15 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
         } catch {}
       }
     }
-  } else {
-    // No manifest-declared monorepo — scan top-level subdirs for any stack
-    // (JS or non-JS) to catch mixed repos like Swift+React, Python+JS, etc.
-    try {
-      const topDirs = await readdir(root, { withFileTypes: true });
-      for (const d of topDirs) {
-        if (!d.isDirectory() || d.name.startsWith(".") || IGNORE_DIRS.has(d.name)) continue;
-        const wsPath = join(root, d.name);
-        // detectWorkspace handles both JS (package.json) and non-JS manifests
-        const wsInfo = await detectWorkspace(root, wsPath, d.name);
-        if (wsInfo) workspaces.push(wsInfo);
-        // Depth-2 discovery — always runs, not as fallback. Catches nested
-        // workspaces in container dirs (e.g. `repos/Engine/`, `apps/web/`,
-        // `services/api/`) even when the container itself matched (e.g. via
-        // PR #15 Python subdir scan hijacking the slot).
-        try {
-          const nestedDirs = await readdir(wsPath, { withFileTypes: true });
-          for (const n of nestedDirs) {
-            if (!n.isDirectory() || n.name.startsWith(".") || IGNORE_DIRS.has(n.name)) continue;
-            const nestedPath = join(wsPath, n.name);
-            const nestedInfo = await detectWorkspace(root, nestedPath, n.name);
-            if (nestedInfo) {
-              // De-dupe by relative path
-              const dup = workspaces.find((w) => w.path === nestedInfo.path);
-              if (!dup) workspaces.push(nestedInfo);
-            }
-          }
-        } catch {}
-      }
-    } catch {}
-    // Treat as implicit monorepo when multiple distinct stacks are found
-    if (workspaces.length >= 2) isMonorepo = true;
   }
+
+  // Always scan top-level and depth-2 directories for implicit workspaces.
+  // This catches undeclared backends in mixed repos and declared monorepos
+  // whose workspace globs do not cover non-JS service paths.
+  await discoverImplicitWorkspaces(root, workspaces);
+
+  // Treat as implicit monorepo when multiple distinct stacks are found
+  if (!isMonorepo && workspaces.length >= 2) isMonorepo = true;
 
   // Aggregate all workspace deps (always — not just for declared monorepos)
   let allDeps = { ...deps };
@@ -309,6 +285,77 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
     workspaces,
     language,
   };
+}
+
+async function discoverImplicitWorkspaces(
+  repoRoot: string,
+  workspaces: WorkspaceInfo[]
+): Promise<void> {
+  try {
+    const topDirs = await readdir(repoRoot, { withFileTypes: true });
+    for (const d of topDirs) {
+      if (!d.isDirectory() || d.name.startsWith(".") || IGNORE_DIRS.has(d.name)) continue;
+      const wsPath = join(repoRoot, d.name);
+
+      if (await hasDirectWorkspaceManifest(wsPath)) {
+        const wsInfo = await detectWorkspace(repoRoot, wsPath, d.name);
+        if (wsInfo && !workspaces.some((w) => w.path === wsInfo.path)) {
+          workspaces.push(wsInfo);
+        }
+      }
+
+      // Depth-2 discovery — always runs, not as fallback. Catches nested
+      // workspaces in container dirs (e.g. `repos/Engine/`, `apps/web/`,
+      // `services/api/`, `container-dir/backend/`) even when the container
+      // itself also matched via subdirectory manifest detection.
+      try {
+        const nestedDirs = await readdir(wsPath, { withFileTypes: true });
+        for (const n of nestedDirs) {
+          if (!n.isDirectory() || n.name.startsWith(".") || IGNORE_DIRS.has(n.name)) continue;
+          const nestedPath = join(wsPath, n.name);
+          if (!(await hasDirectWorkspaceManifest(nestedPath))) continue;
+          const nestedInfo = await detectWorkspace(repoRoot, nestedPath, n.name);
+          if (nestedInfo && !workspaces.some((w) => w.path === nestedInfo.path)) {
+            workspaces.push(nestedInfo);
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+}
+
+async function hasDirectWorkspaceManifest(dir: string): Promise<boolean> {
+  const directManifestNames = [
+    "package.json",
+    "composer.json",
+    "pubspec.yaml",
+    "Package.swift",
+    "requirements.txt",
+    "Pipfile",
+    "pyproject.toml",
+    "mix.exs",
+    "Cargo.toml",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "Gemfile",
+  ];
+
+  for (const manifest of directManifestNames) {
+    if (await fileExists(join(dir, manifest))) return true;
+  }
+
+  try {
+    const entries = await readdir(dir);
+    return entries.some((entry) =>
+      entry.endsWith(".xcodeproj") ||
+      entry.endsWith(".xcworkspace") ||
+      entry.endsWith(".csproj")
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function detectFrameworks(
