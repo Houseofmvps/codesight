@@ -484,6 +484,55 @@ describe("Framework Detection", async () => {
     assert.ok(project.frameworks.includes("elysia"));
   });
 
+  it("detects Django from pyproject.toml Poetry dependencies", async () => {
+    const dir = await writeFixture("django-poetry-detect", {
+      "pyproject.toml": `[tool.poetry]
+name = "django-poetry-detect"
+version = "0.1.0"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+Django = "^6.0"
+djangorestframework = "^3.16"
+`,
+      "urls.py": `from django.urls import path
+urlpatterns = [
+    path("api/users/", views.UserList.as_view()),
+]`,
+      "models.py": `from django.db import models
+
+class User(models.Model):
+    email = models.EmailField(unique=True)
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    assert.ok(project.frameworks.includes("django"));
+    assert.ok(project.orms.includes("django"));
+
+    const files = await mods.collectFiles(dir);
+    const routes = await mods.detectRoutes(files, project);
+    const schemas = await mods.detectSchemas(files, project);
+    assert.equal(routes.length, 1);
+    assert.ok(schemas.some((s: any) => s.name === "User"));
+  });
+
+  it("does not detect Django from Poetry dev-only dependency groups", async () => {
+    const dir = await writeFixture("django-poetry-dev-only", {
+      "pyproject.toml": `[tool.poetry]
+name = "django-poetry-dev-only"
+version = "0.1.0"
+
+[tool.poetry.group.dev.dependencies]
+Django = "^6.0"
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    assert.ok(!project.frameworks.includes("django"), `Did not expect django framework, got ${project.frameworks.join(", ")}`);
+    assert.ok(!project.orms.includes("django"), `Did not expect django ORM, got ${project.orms.join(", ")}`);
+  });
+
   it("detects monorepo", async () => {
     const dir = await writeFixture("monorepo-detect", {
       "package.json": JSON.stringify({ name: "test", workspaces: ["packages/*"] }),
@@ -495,5 +544,70 @@ describe("Framework Detection", async () => {
     assert.ok(project.workspaces.length >= 2);
     assert.ok(project.frameworks.includes("hono"));
     assert.equal(project.componentFramework, "react");
+  });
+});
+
+describe("Poetry Workspace Detection", async () => {
+  const mods = await loadModules();
+
+  it("detects FastAPI and SQLAlchemy from Poetry pyproject.toml in a declared workspace", async () => {
+    const dir = await writeFixture("python-custom-subdir-poetry-pyproject", {
+      "package.json": JSON.stringify({ name: "test", workspaces: ["apps/*", "services/*"] }),
+      "apps/web/package.json": JSON.stringify({ name: "@test/web", dependencies: { react: "^18.0.0" } }),
+      "services/custom-poetry-api/pyproject.toml": `[tool.poetry]
+name = "custom-poetry-api"
+version = "0.1.0"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.110.0"
+sqlalchemy = "^2.0.0"
+uvicorn = "^0.29.0"
+`,
+      "services/custom-poetry-api/main.py": `from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/users")
+def create_user():
+    return {"created": True}
+`,
+      "services/custom-poetry-api/models.py": `from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String, unique=True)
+    posts = relationship("Post")
+
+class Post(Base):
+    __tablename__ = "posts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User")
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    assert.ok(project.frameworks.includes("fastapi"));
+    assert.ok(project.orms.includes("sqlalchemy"));
+    assert.ok(project.workspaces.some((w: any) => w.path === "services/custom-poetry-api"));
+    assert.ok(!project.workspaces.some((w: any) => w.path === "services"));
+
+    const files = await mods.collectFiles(dir);
+    const routes = await mods.detectRoutes(files, project);
+    const schemas = await mods.detectSchemas(files, project);
+    assert.ok(routes.some((r: any) => r.method === "GET" && r.path === "/health"));
+    assert.ok(routes.some((r: any) => r.method === "POST" && r.path === "/users"));
+    assert.ok(schemas.some((s: any) => s.name === "User"));
+    assert.ok(schemas.some((s: any) => s.name === "Post"));
   });
 });
