@@ -112,8 +112,8 @@ function extractDate(
 function extractDecisions(content: string): string[] {
   const decisions: string[] = [];
 
-  // ADR format: ## Decision section content (first meaningful line)
-  const adrSection = content.match(/##\s*Decision\s*\n+([\s\S]*?)(?=\n##|\n---|\n$)/i);
+  // ADR format: ## Decision / ## Entscheidung section content (first meaningful line)
+  const adrSection = content.match(/##\s*(?:Decision|Entscheidung)\s*\n+([\s\S]*?)(?=\n##|\n---|\n$)/i);
   if (adrSection) {
     const firstLine = adrSection[1].trim().split("\n").find((l) => l.trim().length > 10);
     if (firstLine) return [cleanWikilinks(firstLine.replace(/^[-*>]\s*/, "").trim())];
@@ -142,12 +142,28 @@ function extractDecisions(content: string): string[] {
   return [...new Set(decisions)].slice(0, 3);
 }
 
+// ─── Code Block Stripper ──────────────────────────────────────────────────────
+
+/**
+ * Strip fenced code blocks (``` ... ```) and inline `code` spans from markdown.
+ * Prevents false positives when extracting questions, people, etc. from prose.
+ */
+function stripCodeBlocks(content: string): string {
+  // Remove fenced code blocks (``` ... ``` or ~~~ ... ~~~), including language tags
+  let stripped = content.replace(/^```[\s\S]*?^```/gm, "").replace(/^~~~[\s\S]*?^~~~/gm, "");
+  // Remove inline code spans (`...`)
+  stripped = stripped.replace(/`[^`\n]+`/g, "``");
+  return stripped;
+}
+
 // ─── Open Question Extraction ─────────────────────────────────────────────────
 
 function extractOpenQuestions(content: string): string[] {
   const questions: string[] = [];
+  // Strip code blocks first so TypeScript optional params (?), ternaries, etc. don't fire
+  const prose = stripCodeBlocks(content);
 
-  for (const line of content.split("\n")) {
+  for (const line of prose.split("\n")) {
     let t = line.trim();
     if (
       t.endsWith("?") &&
@@ -166,7 +182,7 @@ function extractOpenQuestions(content: string): string[] {
   // TODO / QUESTION markers — only add if not already captured by the line loop above
   const todoRe = /(?:TODO|QUESTION|OPEN|FIXME):\s*([^\n]{10,120})/gi;
   let m: RegExpExecArray | null;
-  while ((m = todoRe.exec(content)) !== null) {
+  while ((m = todoRe.exec(prose)) !== null) {
     const q = cleanWikilinks(m[1].trim());
     if (!q.endsWith("?")) questions.push(q); // ?-ending already captured above
   }
@@ -188,17 +204,48 @@ const PEOPLE_BLACKLIST = new Set([
   "Evaluate Charts", "Participants List", "Stakeholders Involved",
 ]);
 
+// JSDoc tags that start with @ but are never people
+const JSDOC_TAGS = new Set([
+  "param", "returns", "return", "deprecated", "throws", "throw", "type",
+  "example", "see", "link", "author", "since", "version", "todo", "ignore",
+  "override", "abstract", "static", "public", "private", "protected", "readonly",
+  "const", "enum", "interface", "typedef", "callback", "class", "constructor",
+  "this", "extends", "implements", "fires", "emits", "listens", "mixes",
+  "mixin", "namespace", "module", "exports", "requires", "external", "default",
+  "augments", "yields", "yield", "summary", "description", "access", "alias",
+  "async", "generator", "global", "hideconstructor", "inner", "instance",
+  "memberof", "name", "override", "property", "prop", "template",
+]);
+
+// CSS at-rules that start with @ but are never people
+const CSS_AT_RULES = new Set([
+  "keyframes", "font", "media", "import", "charset", "namespace", "supports",
+  "document", "page", "viewport", "counter", "layer", "scope", "starting",
+  "fontface", "fontfeaturevalues", "swash", "annotation", "ornaments",
+  "stylistic", "styleset", "colorprofile", "property",
+]);
+
 function extractPeople(content: string): string[] {
   const people = new Set<string>();
+
+  // Strip code blocks so JSDoc tags inside TS source, CSS at-rules, npm scopes don't fire
+  const prose = stripCodeBlocks(content);
 
   // Common placeholder handles to skip
   const HANDLE_BLACKLIST = new Set(["example", "username", "yourname", "user", "name", "email"]);
 
   // @mentions — ASCII only, no hyphens (npm packages), no template placeholders
-  for (const m of content.matchAll(/@([a-zA-Z][a-zA-Z0-9_]{2,})/g)) {
+  // Also skip: JSDoc tags, CSS at-rules, npm scope prefixes (@scope/pkg)
+  for (const m of prose.matchAll(/@([a-zA-Z][a-zA-Z0-9_]{1,})/g)) {
     const handle = m[1];
-    if (HANDLE_BLACKLIST.has(handle.toLowerCase())) continue;
-    if (handle.includes("-")) continue; // npm scoped packages
+    const lower = handle.toLowerCase();
+    if (HANDLE_BLACKLIST.has(lower)) continue;
+    if (JSDOC_TAGS.has(lower)) continue;   // @param, @deprecated, etc.
+    if (CSS_AT_RULES.has(lower)) continue; // @keyframes, @font-face, etc.
+    // Skip npm scope prefixes: @pixi/layout → next char after handle is "/"
+    const fullMatch = m[0]; // e.g. "@pixi"
+    const afterIdx = m.index! + fullMatch.length;
+    if (prose[afterIdx] === "/") continue; // npm scope
     people.add(handle);
   }
 
@@ -371,8 +418,12 @@ export async function detectKnowledge(
     return b.date.localeCompare(a.date);
   });
 
+  // Filter themes that appear in >35% of all notes — those are template section headings,
+  // not semantic topics. Only apply the proportion filter when the corpus is large enough
+  // (>10 notes) to avoid suppressing legitimate recurring themes in small knowledge bases.
+  const templateCap = notes.length > 10 ? Math.floor(notes.length * 0.35) : Infinity;
   const recurringThemes = [...themeMap.entries()]
-    .filter(([, count]) => count > 1)
+    .filter(([, count]) => count > 1 && count <= templateCap)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 12)
     .map(([t]) => t);

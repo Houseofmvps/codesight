@@ -270,6 +270,24 @@ export async function generateProfileConfig(
       await writeFile(join(root, ".windsurfrules"), summaryLines.join("\n"));
       return ".windsurfrules";
     }
+    case "agents": {
+      // Generate ONLY AGENTS.md — for local models and cross-platform AI agents
+      // that follow the AGENTS.md standard (OpenAI Codex, local LLMs, etc.)
+      summaryLines.push(`## Agent Instructions\n`);
+      summaryLines.push(`This project uses codesight for structured AI context. Follow these steps before implementing:`);
+      summaryLines.push(`1. Read \`.codesight/wiki/index.md\` for project orientation (~200 tokens)`);
+      summaryLines.push(`2. Read \`.codesight/wiki/overview.md\` for architecture overview (~500 tokens)`);
+      summaryLines.push(`3. Read the relevant domain article, then open the source files listed in it`);
+      summaryLines.push(`4. Read \`.codesight/CODESIGHT.md\` for the full context map\n`);
+      summaryLines.push(`**Do not explore the file tree blindly.** The codesight context map already contains:`);
+      summaryLines.push(`routes, schema, components, libraries, config, middleware, and dependency graph.\n`);
+      summaryLines.push(`**Before modifying any file:** check \`.codesight/graph.md\` for blast radius.`);
+      summaryLines.push(`Files with high import counts affect many downstream modules — change carefully.\n`);
+      summaryLines.push(`Routes marked \`[inferred]\` were detected via regex and may have lower precision.`);
+      summaryLines.push(`If any source file shows ⚠ in a wiki article, re-run \`npx codesight --wiki\` before proceeding.`);
+      await writeFile(join(root, "AGENTS.md"), summaryLines.join("\n"));
+      return "AGENTS.md";
+    }
     default: {
       // Generic profile — write all configs
       const generated = await generateAIConfigs(result, root);

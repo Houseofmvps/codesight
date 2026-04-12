@@ -185,7 +185,7 @@ export interface CodesightConfig {
   /** Output directory name (default: ".codesight") */
   outputDir?: string;
   /** AI tool profile */
-  profile?: "claude-code" | "cursor" | "codex" | "copilot" | "windsurf" | "generic";
+  profile?: "claude-code" | "cursor" | "codex" | "copilot" | "windsurf" | "agents" | "generic";
   /** Additional ignore patterns (glob-style) */
   ignorePatterns?: string[];
   /** Custom route patterns: [{ pattern: "router\\.handle\\(", method: "ALL" }] */

@@ -1,7 +1,7 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { ScanResult, RouteInfo, SchemaModel, DetectionMethod } from "../types.js";
+import type { ScanResult, RouteInfo, SchemaModel, DetectionMethod, LibExport } from "../types.js";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -148,6 +148,7 @@ function overviewArticle(result: ScanResult): string {
   if (routes.length > 0) facts.push(`${routes.length} API routes`);
   if (schemas.length > 0) facts.push(`${schemas.length} database models`);
   if (components.length > 0) facts.push(`${components.length} UI components`);
+  if (result.libs.length > 0) facts.push(`${result.libs.length} library files`);
   if (middleware.length > 0) facts.push(`${middleware.length} middleware layers`);
   if (config.envVars.length > 0) facts.push(`${config.envVars.length} environment variables`);
   if (facts.length > 0) {
@@ -179,6 +180,11 @@ function overviewArticle(result: ScanResult): string {
   // Components
   if (components.length > 0) {
     lines.push(`**UI:** ${components.length} components (${project.componentFramework}) — see [ui.md](./ui.md)`, "");
+  }
+
+  // Libraries (non-web / library-heavy projects)
+  if (result.libs.length >= 10) {
+    lines.push(`**Libraries:** ${result.libs.length} files — see [libraries.md](./libraries.md)`, "");
   }
 
   // High-impact files
@@ -440,6 +446,72 @@ function uiArticle(result: ScanResult): string {
   return lines.join("\n");
 }
 
+// ─── Library article (non-web projects) ──────────────────────────────────────
+
+/**
+ * Derive a human-readable group name from a relative file path.
+ * Strips generic top-level dirs (src, lib, source) so that
+ * "src/engine/world.ts" → "engine" and "lib/utils/parse.ts" → "utils".
+ */
+function libGroupKey(file: string): string {
+  const parts = file.replace(/\\/g, "/").split("/");
+  const GENERIC = new Set(["src", "lib", "source", "packages", "apps", "modules", "core", "internal"]);
+  if (parts.length >= 2 && GENERIC.has(parts[0])) return parts[1];
+  return parts[0];
+}
+
+/**
+ * Generate a libraries.md article grouping lib files by top-level source directory.
+ * Emitted when a project has significant library code but few/no HTTP routes or ORM models.
+ */
+function librariesArticle(libs: LibExport[]): string {
+  const lines: string[] = [];
+  lines.push("# Libraries", "");
+  lines.push(
+    `> **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.`,
+    ""
+  );
+
+  // Group by top-level directory
+  const groups = new Map<string, LibExport[]>();
+  for (const lib of libs) {
+    const key = libGroupKey(lib.file);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(lib);
+  }
+
+  // Sort groups: more files first, then alphabetical
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+
+  lines.push(
+    `**${libs.length} library files** across ${sorted.length} module${sorted.length !== 1 ? "s" : ""}`,
+    ""
+  );
+
+  for (const [group, files] of sorted) {
+    const title = group.charAt(0).toUpperCase() + group.slice(1);
+    lines.push(`## ${title} (${files.length} files)`, "");
+
+    // Sort files within group: most exports first
+    const byExports = [...files].sort((a, b) => b.exports.length - a.exports.length);
+    const shown = byExports.slice(0, 25);
+
+    for (const lib of shown) {
+      const topExports = lib.exports
+        .slice(0, 6)
+        .map((e) => e.name)
+        .join(", ");
+      const exStr = topExports ? ` — ${topExports}${lib.exports.length > 6 ? ", …" : ""}` : "";
+      lines.push(`- \`${lib.file}\`${exStr}`);
+    }
+    if (byExports.length > 25) lines.push(`- _…and ${byExports.length - 25} more files_`);
+    lines.push("");
+  }
+
+  lines.push("---", `_Back to [overview.md](./overview.md)_`);
+  return lines.join("\n");
+}
+
 function indexFile(result: ScanResult, articles: string[]): string {
   const { project, routes, schemas, components, config } = result;
   const lines: string[] = [];
@@ -476,7 +548,12 @@ function indexFile(result: ScanResult, articles: string[]): string {
   lines.push("- **New session:** read `index.md` (this file) for orientation — WHERE things are");
   lines.push("- **Architecture question:** read `overview.md` (~500 tokens)");
   lines.push("- **Domain question:** read the relevant article, then **read those source files**");
-  lines.push("- **Database question:** read `database.md`, then read the actual schema files");
+  if (articles.includes("database.md")) {
+    lines.push("- **Database question:** read `database.md`, then read the actual schema files");
+  }
+  if (articles.includes("libraries.md")) {
+    lines.push("- **Library question:** read `libraries.md`, then read the listed source files");
+  }
   lines.push("- **Before implementing anything:** read the source files listed in the article");
   lines.push("- **Full source context:** read `.codesight/CODESIGHT.md`");
   lines.push("");
@@ -578,6 +655,16 @@ export async function generateWiki(
     await writeFile(join(wikiDir, "ui.md"), ui);
     articles.push("ui.md");
     totalChars += ui.length;
+  }
+
+  // libraries.md — when significant library code exists (game engines, CLI tools,
+  // data pipelines, monorepo packages — projects without HTTP routes / ORM schemas)
+  const LIB_THRESHOLD = 10;
+  if (result.libs.length >= LIB_THRESHOLD) {
+    const lib = librariesArticle(result.libs);
+    await writeFile(join(wikiDir, "libraries.md"), lib);
+    articles.push("libraries.md");
+    totalChars += lib.length;
   }
 
   // index.md

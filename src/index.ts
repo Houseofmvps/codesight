@@ -25,7 +25,7 @@ import type { ScanResult } from "./types.js";
 import type { CodesightConfig } from "./types.js";
 import { loadConfig, mergeCliConfig } from "./config.js";
 
-const VERSION = "1.10.0";
+const VERSION = "1.12.0";
 const BRAND = "codesight";
 
 function printHelp() {
@@ -46,7 +46,7 @@ function printHelp() {
     --mcp                    Start as MCP server (for Claude Code, Cursor)
     --json                   Output JSON instead of markdown
     --benchmark              Show detailed token savings breakdown
-    --profile <tool>         Generate optimized config (claude-code|cursor|codex|copilot|windsurf)
+    --profile <tool>         Generate optimized config (claude-code|cursor|codex|copilot|windsurf|agents)
     --blast <file>           Show blast radius for a file
     --telemetry              Run token telemetry (real before/after measurement)
     --eval                   Run precision/recall benchmarks on eval fixtures
@@ -77,6 +77,7 @@ function printHelp() {
     npx ${BRAND} ./my-project            # Scan specific directory
     npx ${BRAND} --mode knowledge        # Map knowledge base (.md notes → KNOWLEDGE.md)
     npx ${BRAND} --mode knowledge ~/vault # Map Obsidian vault or any .md folder
+    npx ${BRAND} --profile agents        # Generate AGENTS.md only (cross-platform agents)
 `);
 }
 
