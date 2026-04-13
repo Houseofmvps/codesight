@@ -276,3 +276,10 @@ describe("runMonorepoScan", () => {
     );
   });
 });
+
+describe("watchMonorepo", () => {
+  it("exports a watchMonorepo function", async () => {
+    const mod = await import("../dist/monorepo/watch.js");
+    assert.equal(typeof mod.watchMonorepo, "function");
+  });
+});
