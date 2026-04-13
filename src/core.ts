@@ -35,6 +35,7 @@ export async function scan(
 
   const startTime = Date.now();
 
+  // Step 1: Detect project
   if (!quiet) process.stdout.write("  Detecting project...");
   const project = await detectProject(root);
   if (!quiet) {
@@ -46,12 +47,14 @@ export async function scan(
     }
   }
 
+  // Step 2: Collect files — merge .codesightignore + config ignorePatterns
   if (!quiet) process.stdout.write("  Collecting files...");
   const ignoreFromFile = await readCodesightIgnore(root);
   const allIgnorePatterns = [...(userConfig.ignorePatterns ?? []), ...ignoreFromFile];
   const files = await collectFiles(root, maxDepth, allIgnorePatterns);
   if (!quiet) console.log(` ${files.length} files`);
 
+  // Step 3: Run all detectors in parallel (respecting disableDetectors config)
   if (!quiet) process.stdout.write("  Analyzing...");
 
   const disabled = new Set(userConfig.disableDetectors || []);
@@ -73,6 +76,7 @@ export async function scan(
       detectOpenAPISpec(root, project),
     ]);
 
+  // Merge OpenAPI routes and schemas if spec found
   const rawRoutes = [...rawHttpRoutes, ...graphqlRoutes, ...grpcRoutes, ...wsRoutes];
   if (openapi.routes.length > 0) {
     if (rawRoutes.length === 0) rawRoutes.push(...openapi.routes);
@@ -82,6 +86,7 @@ export async function scan(
     }
   }
 
+  // Step 3b: Run plugin detectors
   if (userConfig.plugins) {
     for (const plugin of userConfig.plugins) {
       if (plugin.detector) {
@@ -98,10 +103,16 @@ export async function scan(
     }
   }
 
+  // Step 4: Enrich routes with contract info
   const routes = await enrichRouteContracts(rawRoutes, project);
+
+  // Step 4b: Test coverage detection
   const testCoverage = await detectTestCoverage(files, routes, schemas, root);
+
+  // Step 4c: Compute CRUD groups
   const crudGroups = computeCrudGroups(routes);
 
+  // Report AST vs regex detection
   if (!quiet) {
     const astRoutes = routes.filter((r) => r.confidence === "ast").length;
     const astSchemas = schemas.filter((s) => s.confidence === "ast").length;
@@ -125,8 +136,10 @@ export async function scan(
     }
   }
 
+  // Step 5: Write output
   if (!quiet) process.stdout.write("  Writing output...");
 
+  // Temporary result without token stats to generate output
   const tempResult: ScanResult = {
     project,
     routes,
@@ -143,12 +156,17 @@ export async function scan(
   };
 
   const outputContent = await writeOutput(tempResult, outputDir);
+
+  // Step 6: Calculate real token stats
   const tokenStats = calculateTokenStats(tempResult, outputContent, files.length);
   const result: ScanResult = { ...tempResult, tokenStats };
+
+  // Re-write with accurate token stats
   await writeOutput(result, outputDir);
 
+  const elapsed = Date.now() - startTime;
+
   if (!quiet) {
-    const elapsed = Date.now() - startTime;
     console.log(` ${outputDirName}/`);
     console.log(`
   Results:
