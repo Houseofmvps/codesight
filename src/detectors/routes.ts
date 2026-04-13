@@ -1538,14 +1538,32 @@ async function detectAngularRoutes(
   const seen = new Set<string>();
 
   for (const file of tsFiles) {
-    const content = await readFileSafe(file);
-    if (!content) continue;
+    // Skip non-routing files: services, components, guards, pipes, directives
+    // all commonly have `path` properties that are not route configs.
     if (
-      !content.includes("Routes") &&
-      !content.includes("RouterModule") &&
-      !content.includes("provideRouter")
+      file.endsWith(".service.ts") ||
+      file.endsWith(".component.ts") ||
+      file.endsWith(".guard.ts") ||
+      file.endsWith(".pipe.ts") ||
+      file.endsWith(".directive.ts") ||
+      file.endsWith(".interceptor.ts")
     )
       continue;
+
+    const content = await readFileSafe(file);
+    if (!content) continue;
+
+    // Only process files that are actual Angular routing files.
+    // Require a structural signal: forRoot/forChild call, provideRouter call,
+    // `: Routes` type annotation, or a filename that includes "routing" or ".routes."
+    const isRoutingFile =
+      /[/\\].*(?:routing|\.routes)\./i.test(file) ||
+      content.includes("RouterModule.forRoot(") ||
+      content.includes("RouterModule.forChild(") ||
+      content.includes("provideRouter(") ||
+      /:\s*Routes\b/.test(content);
+
+    if (!isRoutingFile) continue;
 
     const rel = relative(project.root, file).replace(/\\/g, "/");
     const tags = detectTags(content);

@@ -405,8 +405,11 @@ function extractTRPCRoutes(
         }
 
         // Imported procedure reference: { getUsers: getUsersProcedure }
-        // Can't distinguish query/mutation without resolving imports — use PROCEDURE.
+        // Skip identifiers that are clearly sub-router variables (end with Router/Routes by convention).
+        // Everything else is treated as an imported procedure.
         if (init.kind === SK.Identifier || init.kind === SK.PropertyAccessExpression) {
+          const identName = init.kind === SK.Identifier ? getText(sf, init) : "";
+          if (/[Rr]outer$|[Rr]outes$/.test(identName)) continue;
           routes.push({
             method: "PROCEDURE",
             path: prefix ? `${prefix}.${name}` : name,

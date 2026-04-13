@@ -427,12 +427,29 @@ async function detectAngularComponents(
     if (!classMatch) continue;
     const name = classMatch[1];
 
-    // @Input() decorated properties as "props"
+    // @Input() decorated properties — handles:
+    //   @Input()                 propName: T
+    //   @Input('alias')          propName: T
+    //   @Input({ required: true }) propName: T
+    // Also signal-based inputs (Angular 17+):
+    //   propName = input<T>()
+    //   propName = input.required<T>()
     const props: string[] = [];
-    const inputPattern = /@Input\(\)[^;]*?\s+(\w+)\s*[!?]?\s*:/g;
+
+    const decoratorInputPattern = /@Input\s*\([^)]*\)\s+(?:\w+\s+)*(\w+)\s*[!?]?\s*:/g;
     let m: RegExpExecArray | null;
-    while ((m = inputPattern.exec(content)) !== null) {
+    while ((m = decoratorInputPattern.exec(content)) !== null) {
       if (!props.includes(m[1])) props.push(m[1]);
+    }
+
+    // Signal inputs: `propName = input(...)` or `propName = input.required(...)`
+    const signalInputPattern = /\b(\w+)\s*=\s*input(?:\.required)?\s*(?:<[^>]*>)?\s*\(/g;
+    while ((m = signalInputPattern.exec(content)) !== null) {
+      const propName = m[1];
+      // Exclude common false positives that start with lowercase verbs
+      if (!["const", "let", "var", "return", "await"].includes(propName) && !props.includes(propName)) {
+        props.push(propName);
+      }
     }
 
     components.push({
