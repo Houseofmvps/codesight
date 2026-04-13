@@ -69,6 +69,18 @@ export async function writeOutput(
     await writeFile(join(outputDir, "coverage.md"), content);
   }
 
+  // Plugin-contributed custom sections
+  if (result.customSections) {
+    const reserved = new Set(["routes", "schema", "components", "libs", "config", "middleware", "graph", "events", "coverage", "codesight"]);
+    for (const cs of result.customSections) {
+      // Sanitise name to safe basename: lowercase alphanumeric, hyphens, underscores
+      const safeName = cs.name.replace(/[^a-z0-9_-]/gi, "").toLowerCase();
+      if (!safeName || reserved.has(safeName)) continue;
+      sections.push({ name: safeName, content: cs.content });
+      await writeFile(join(outputDir, `${safeName}.md`), cs.content);
+    }
+  }
+
   const combined = formatCombined(result, sections);
   await writeFile(join(outputDir, "CODESIGHT.md"), combined);
 
