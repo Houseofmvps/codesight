@@ -38,6 +38,7 @@ function printHelp() {
     --max-tokens <n>         Trim output to fit token budget (e.g. --max-tokens 50000)
     --since <ref>            Show only routes from files changed since git ref/commit
     --mode <mode>            Scan mode: code (default) | knowledge (map .md notes)
+    --refresh [pkg]          Rebuild monorepo package context (all or named package)
     -v, --version            Show version
     -h, --help               Show this help
 
@@ -264,6 +265,8 @@ async function main() {
   let maxTokens = 0;
   let doSince = "";
   let mode = "code";
+  let doRefresh = false;
+  let refreshPackage = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -304,6 +307,11 @@ async function main() {
       doSince = args[++i];
     } else if (arg === "--mode" && args[i + 1]) {
       mode = args[++i];
+    } else if (arg === "--refresh") {
+      doRefresh = true;
+      if (args[i + 1] && !args[i + 1].startsWith("-")) {
+        refreshPackage = args[++i];
+      }
     } else if (!arg.startsWith("-")) {
       targetDir = resolve(arg);
     }
@@ -356,6 +364,25 @@ async function main() {
   // Install git hook
   if (doHook) {
     await installGitHook(root, outputDirName);
+  }
+
+  // --refresh: rebuild monorepo packages and exit
+  if (doRefresh) {
+    const { runMonorepoScan } = await import("./monorepo/orchestrator.js");
+    await runMonorepoScan(root, config, refreshPackage || undefined);
+    return;
+  }
+
+  // Monorepo mode: route to orchestrator or watch
+  if (config.monorepo?.enabled) {
+    if (doWatch) {
+      const { watchMonorepo } = await import("./monorepo/watch.js");
+      await watchMonorepo(root, config);
+      return;
+    }
+    const { runMonorepoScan } = await import("./monorepo/orchestrator.js");
+    await runMonorepoScan(root, config);
+    return;
   }
 
   // Knowledge mode: scan .md files instead of code
