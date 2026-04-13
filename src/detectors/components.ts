@@ -87,6 +87,8 @@ export async function detectComponents(
       return detectFlutterComponents(files, project);
     case "jetpack-compose":
       return detectComposeComponentsFromFiles(files, project);
+    case "angular":
+      return detectAngularComponents(files, project);
     default: {
       // SwiftUI: no componentFramework flag — detect if swiftui/vapor framework present
       if (
@@ -395,6 +397,51 @@ async function detectComposeComponentsFromFiles(
     if (!content || !content.includes("@Composable")) continue;
     const rel = relative(project.root, file);
     components.push(...extractComposeComponents(rel, content));
+  }
+
+  return components;
+}
+
+// --- Angular Components ---
+async function detectAngularComponents(
+  files: string[],
+  project: ProjectInfo
+): Promise<ComponentInfo[]> {
+  const tsFiles = files.filter(
+    (f) =>
+      f.endsWith(".ts") &&
+      !f.includes("node_modules") &&
+      !f.endsWith(".spec.ts") &&
+      !f.endsWith(".d.ts")
+  );
+  const components: ComponentInfo[] = [];
+
+  for (const file of tsFiles) {
+    const content = await readFileSafe(file);
+    if (!content || !content.includes("@Component")) continue;
+
+    const rel = relative(project.root, file);
+
+    // Class name
+    const classMatch = content.match(/@Component[\s\S]*?class\s+(\w+)/);
+    if (!classMatch) continue;
+    const name = classMatch[1];
+
+    // @Input() decorated properties as "props"
+    const props: string[] = [];
+    const inputPattern = /@Input\(\)[^;]*?\s+(\w+)\s*[!?]?\s*:/g;
+    let m: RegExpExecArray | null;
+    while ((m = inputPattern.exec(content)) !== null) {
+      if (!props.includes(m[1])) props.push(m[1]);
+    }
+
+    components.push({
+      name,
+      file: rel,
+      props: props.slice(0, 10),
+      isClient: true,
+      isServer: false,
+    });
   }
 
   return components;

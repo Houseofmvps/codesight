@@ -37,11 +37,12 @@ export type Framework =
   | "graphql"
   | "grpc"
   | "websocket"
+  | "angular"
   | "unknown";
 
 export type ORM = "drizzle" | "prisma" | "typeorm" | "sqlalchemy" | "django" | "gorm" | "mongoose" | "sequelize" | "activerecord" | "ecto" | "eloquent" | "entity-framework" | "exposed" | "room" | "unknown";
 
-export type ComponentFramework = "react" | "vue" | "svelte" | "flutter" | "jetpack-compose" | "unknown";
+export type ComponentFramework = "react" | "vue" | "svelte" | "flutter" | "jetpack-compose" | "angular" | "unknown";
 
 export type KnowledgeNoteType = "decision" | "meeting" | "retro" | "spec" | "backlog" | "research" | "session" | "general";
 

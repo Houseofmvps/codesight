@@ -404,7 +404,34 @@ function extractTRPCRoutes(
           continue;
         }
 
-        // Could be a reference to another router variable — can't resolve without types
+        // Imported procedure reference: { getUsers: getUsersProcedure }
+        // Can't distinguish query/mutation without resolving imports — use PROCEDURE.
+        if (init.kind === SK.Identifier || init.kind === SK.PropertyAccessExpression) {
+          routes.push({
+            method: "PROCEDURE",
+            path: prefix ? `${prefix}.${name}` : name,
+            file: filePath,
+            tags,
+            framework: "trpc",
+            confidence: "ast",
+          });
+          continue;
+        }
+      }
+
+      // Shorthand property: router({ getUsers }) — imported procedure, name === identifier
+      if (prop.kind === SK.ShorthandPropertyAssignment) {
+        const name = prop.name ? getText(sf, prop.name) : "";
+        if (!name) continue;
+        routes.push({
+          method: "PROCEDURE",
+          path: prefix ? `${prefix}.${name}` : name,
+          file: filePath,
+          tags,
+          framework: "trpc",
+          confidence: "ast",
+        });
+        continue;
       }
 
       if (prop.kind === SK.SpreadAssignment) {

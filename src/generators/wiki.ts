@@ -79,8 +79,12 @@ function detectDomains(routes: RouteInfo[]): Domain[] {
 
     let domain: string;
 
+    // ── tRPC: group by first dotted path segment so procedures never bleed into HTTP domains ──
+    if (route.framework === "trpc") {
+      domain = route.path.split(".")[0] || "procedures";
+    }
     // ── Infra: health/monitoring/low-level transport endpoints ──────────────
-    if (
+    else if (
       path === "/" ||
       /^\/(health|healthz|metrics|status|ping|ready|readyz|live|livez|mcp|sse|messages)(\/|$)/.test(path)
     ) {

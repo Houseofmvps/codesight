@@ -402,6 +402,9 @@ async function detectFrameworks(
   // tRPC
   if (deps["@trpc/server"]) frameworks.push("trpc");
 
+  // Angular
+  if (deps["@angular/core"]) frameworks.push("angular");
+
   // SvelteKit
   if (deps["@sveltejs/kit"]) frameworks.push("sveltekit");
 
@@ -662,6 +665,7 @@ function detectComponentFramework(
   if (deps["svelte"]) return "svelte";
   if (frameworks.includes("flutter")) return "flutter";
   if (frameworks.includes("android")) return "jetpack-compose";
+  if (frameworks.includes("angular")) return "angular";
   return "unknown";
 }
 
