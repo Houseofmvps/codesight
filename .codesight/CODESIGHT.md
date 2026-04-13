@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | typescript
 
-> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 35 lib files | 6 env vars | 5 middleware | 6 events | 60% test coverage
-> **Token savings:** this file is ~3,300 tokens. Without it, AI exploration would cost ~24,600 tokens. **Saves ~21,300 tokens per conversation.**
-> **Last scanned:** 2026-04-13 17:32 — re-run after significant changes
+> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 40 lib files | 6 env vars | 5 middleware | 6 events | 60% test coverage
+> **Token savings:** this file is ~3,400 tokens. Without it, AI exploration would cost ~25,900 tokens. **Saves ~22,400 tokens per conversation.**
+> **Last scanned:** 2026-04-13 21:07 — re-run after significant changes
 
 ---
 
@@ -77,6 +77,10 @@
   - function parseDecorator: (ts, sf, decorator) => void
   - function getText: (sf, node) => string
 - `src/config.ts` — function loadConfig: (root) => Promise<CodesightConfig>, function mergeCliConfig: (config, cli) => CodesightConfig
+- `src/core.ts`
+  - function scan: (root, outputDirName, maxDepth, userConfig, quiet) => Promise<ScanResult>
+  - const VERSION
+  - const BRAND
 - `src/detectors/blast-radius.ts` — function analyzeBlastRadius: (filePath, result, maxDepth) => BlastRadiusResult, function analyzeMultiFileBlastRadius: (files, result, maxDepth) => BlastRadiusResult
 - `src/detectors/components.ts` — function detectComponents: (files, project) => Promise<ComponentInfo[]>, function ComponentName: (starts with uppercase) => void
 - `src/detectors/config.ts` — function detectConfig: (files, project) => Promise<ConfigInfo>
@@ -108,7 +112,10 @@
   - function computeCrudGroups: (routes) => import("./types.js").CrudGroup[]
   - function formatKnowledge: (map, projectName, version) => string
   - function writeKnowledgeOutput: (map, outputDir, projectName, version) => Promise<string>
-- `src/generators/ai-config.ts` — function generateAIConfigs: (result, root) => Promise<string[]>, function generateProfileConfig: (result, root, profile) => Promise<string>
+- `src/generators/ai-config.ts`
+  - function generateAIConfigs: (result, root) => Promise<string[]>
+  - function generateProfileConfig: (result, root, profile) => Promise<string>
+  - function generateMonorepoAIConfigs: (root, packages, outputDirName) => Promise<string[]>
 - `src/generators/html-report.ts` — function generateHtmlReport: (result, outputDir) => Promise<string>
 - `src/generators/wiki.ts`
   - function generateWiki: (result, outputDir) => Promise<WikiResult>
@@ -117,6 +124,10 @@
   - function lintWiki: (result, outputDir) => Promise<string>
   - interface WikiResult
 - `src/mcp-server.ts` — function startMCPServer: () => void
+- `src/monorepo/deps.ts` — function extractCrossPackageDeps: (packageDir, workspacePackageNames) => Promise<string[]>, function writeDepsFile: (packageDir, deps, outputDirName) => Promise<void>
+- `src/monorepo/discover.ts` — function discoverPackages: (root, config) => Promise<PackageInfo[]>, interface PackageInfo
+- `src/monorepo/orchestrator.ts` — function runMonorepoScan: (root, userConfig, targetPackage?) => Promise<PackageInfo[]>
+- `src/monorepo/watch.ts` — function watchMonorepo: (root, userConfig) => Promise<void>
 - `src/scanner.ts`
   - function readCodesightIgnore: (root) => Promise<string[]>
   - function loadFileHashCache: (outputDir) => Promise<FileHashCache>
@@ -167,39 +178,39 @@
 
 ## Most Imported Files (change these carefully)
 
-- `src/types.ts` — imported by **37** files
-- `src/scanner.ts` — imported by **15** files
+- `src/types.ts` — imported by **41** files
+- `src/scanner.ts` — imported by **16** files
 - `src/ast/loader.ts` — imported by **6** files
-- `src/ast/extract-dart.ts` — imported by **3** files
-- `src/ast/extract-swift.ts` — imported by **3** files
-- `src/ast/extract-android.ts` — imported by **3** files
-- `src/ast/extract-csharp.ts` — imported by **3** files
-- `src/ast/extract-php.ts` — imported by **3** files
 - `src/detectors/routes.ts` — imported by **3** files
 - `src/detectors/schema.ts` — imported by **3** files
 - `src/detectors/components.ts` — imported by **3** files
 - `src/detectors/config.ts` — imported by **3** files
 - `src/detectors/middleware.ts` — imported by **3** files
+- `src/formatter.ts` — imported by **3** files
+- `src/ast/extract-dart.ts` — imported by **3** files
+- `src/ast/extract-swift.ts` — imported by **3** files
+- `src/ast/extract-android.ts` — imported by **3** files
+- `src/ast/extract-csharp.ts` — imported by **3** files
+- `src/ast/extract-php.ts` — imported by **3** files
+- `src/generators/ai-config.ts` — imported by **3** files
+- `src/core.ts` — imported by **3** files
+- `src/monorepo/discover.ts` — imported by **3** files
 - `tests/fixtures/graph-app/src/db.ts` — imported by **3** files
-- `src/ast/extract-python.ts` — imported by **2** files
-- `src/ast/extract-go.ts` — imported by **2** files
 - `src/detectors/libs.ts` — imported by **2** files
 - `src/detectors/graph.ts` — imported by **2** files
-- `src/detectors/contracts.ts` — imported by **2** files
-- `src/detectors/tokens.ts` — imported by **2** files
 
 ## Import Map (who imports what)
 
-- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts`, `src/ast/extract-dart.ts`, `src/ast/extract-go.ts` +32 more
-- `src/scanner.ts` ← `src/detectors/components.ts`, `src/detectors/config.ts`, `src/detectors/contracts.ts`, `src/detectors/coverage.ts`, `src/detectors/events.ts` +10 more
+- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts`, `src/ast/extract-dart.ts`, `src/ast/extract-go.ts` +36 more
+- `src/scanner.ts` ← `src/core.ts`, `src/detectors/components.ts`, `src/detectors/config.ts`, `src/detectors/contracts.ts`, `src/detectors/coverage.ts` +11 more
 - `src/ast/loader.ts` ← `src/ast/extract-components.ts`, `src/ast/extract-routes.ts`, `src/ast/extract-schema.ts`, `src/detectors/components.ts`, `src/detectors/routes.ts` +1 more
+- `src/detectors/routes.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
+- `src/detectors/schema.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
+- `src/detectors/components.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
+- `src/detectors/config.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
+- `src/detectors/middleware.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
+- `src/formatter.ts` ← `src/core.ts`, `src/index.ts`, `src/mcp-server.ts`
 - `src/ast/extract-dart.ts` ← `src/detectors/components.ts`, `src/detectors/libs.ts`, `src/detectors/routes.ts`
-- `src/ast/extract-swift.ts` ← `src/detectors/components.ts`, `src/detectors/libs.ts`, `src/detectors/routes.ts`
-- `src/ast/extract-android.ts` ← `src/detectors/components.ts`, `src/detectors/routes.ts`, `src/detectors/schema.ts`
-- `src/ast/extract-csharp.ts` ← `src/detectors/libs.ts`, `src/detectors/routes.ts`, `src/detectors/schema.ts`
-- `src/ast/extract-php.ts` ← `src/detectors/libs.ts`, `src/detectors/routes.ts`, `src/detectors/schema.ts`
-- `src/detectors/routes.ts` ← `src/eval.ts`, `src/index.ts`, `src/mcp-server.ts`
-- `src/detectors/schema.ts` ← `src/eval.ts`, `src/index.ts`, `src/mcp-server.ts`
 
 ---
 
@@ -228,7 +239,7 @@
 # Test Coverage
 
 > **60%** of routes and models are covered by tests
-> 33 test files found
+> 34 test files found
 
 ## Covered Routes
 
