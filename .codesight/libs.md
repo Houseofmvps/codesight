@@ -49,7 +49,7 @@
 - `src/config.ts` — function loadConfig: (root) => Promise<CodesightConfig>, function mergeCliConfig: (config, cli) => CodesightConfig
 - `src/core.ts`
   - function scan: (root, outputDirName, maxDepth, userConfig, quiet) => Promise<ScanResult>
-  - const VERSION
+  - const VERSION: string
   - const BRAND
 - `src/detectors/blast-radius.ts` — function analyzeBlastRadius: (filePath, result, maxDepth) => BlastRadiusResult, function analyzeMultiFileBlastRadius: (files, result, maxDepth) => BlastRadiusResult
 - `src/detectors/components.ts` — function detectComponents: (files, project) => Promise<ComponentInfo[]>, function ComponentName: (starts with uppercase) => void
