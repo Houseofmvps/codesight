@@ -22,7 +22,10 @@ function generateContext(result: ScanResult): string {
   lines.push(`This is a ${project.language} project using ${fw}${orm !== "none" ? ` with ${orm}` : ""}.`);
 
   if (project.isMonorepo) {
-    lines.push(`It is a monorepo with workspaces: ${project.workspaces.map((w) => `${w.name} (${w.path})`).join(", ")}.`);
+    const repoLabel = project.repoType === "meta" ? "meta-repo"
+      : project.repoType === "microservices" ? "microservices repo"
+      : "monorepo";
+    lines.push(`It is a ${repoLabel} with workspaces: ${project.workspaces.map((w) => `${w.name} (${w.path})`).join(", ")}.`);
   }
 
   lines.push("");
@@ -175,7 +178,10 @@ export async function generateProfileConfig(
   summaryLines.push(`# ${project.name} — Project Context\n`);
   summaryLines.push(`**Stack:** ${project.frameworks.join(", ") || "generic"} | ${project.orms.join(", ") || "none"} | ${project.language}`);
   if (project.isMonorepo) {
-    summaryLines.push(`**Monorepo:** ${project.workspaces.map((w) => w.name).join(", ")}`);
+    const repoLabel = project.repoType === "meta" ? "Meta-repo"
+      : project.repoType === "microservices" ? "Microservices"
+      : "Monorepo";
+    summaryLines.push(`**${repoLabel}:** ${project.workspaces.map((w) => w.name).join(", ")}`);
   }
   summaryLines.push(`\n${routes.length} routes | ${schemas.length} models | ${config.envVars.length} env vars | ${graph.edges.length} import links\n`);
 

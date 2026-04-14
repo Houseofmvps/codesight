@@ -157,12 +157,17 @@ function overviewArticle(result: ScanResult): string {
   // One-sentence description
   const parts: string[] = [`a ${project.language} project built with ${fw}`];
   if (orm !== "none") parts.push(`using ${orm} for data persistence`);
-  if (project.isMonorepo) parts.push(`organized as a monorepo`);
+  if (project.repoType === "meta") parts.push(`organized as a meta-repo (aggregated independent projects)`);
+  else if (project.repoType === "microservices") parts.push(`organized as a microservices repo`);
+  else if (project.isMonorepo) parts.push(`organized as a monorepo`);
   lines.push(`**${project.name}** is ${parts.join(", ")}.`, "");
 
   if (project.isMonorepo && project.workspaces.length > 0) {
+    const wsLabel = project.repoType === "meta" ? "Projects"
+      : project.repoType === "microservices" ? "Services"
+      : "Workspaces";
     lines.push(
-      `**Workspaces:** ${project.workspaces.map((w) => `\`${w.name}\` (\`${w.path}\`)`).join(", ")}`,
+      `**${wsLabel}:** ${project.workspaces.map((w) => `\`${w.name}\` (\`${w.path}\`)`).join(", ")}`,
       ""
     );
   }

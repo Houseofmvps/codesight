@@ -71,6 +71,8 @@ export interface KnowledgeMap {
   dateRange?: { from: string; to: string };
 }
 
+export type RepoType = "single" | "monorepo" | "microservices" | "meta";
+
 export interface ProjectInfo {
   root: string;
   name: string;
@@ -78,6 +80,7 @@ export interface ProjectInfo {
   orms: ORM[];
   componentFramework: ComponentFramework;
   isMonorepo: boolean;
+  repoType: RepoType;
   workspaces: WorkspaceInfo[];
   language: "typescript" | "javascript" | "python" | "go" | "ruby" | "elixir" | "java" | "kotlin" | "rust" | "php" | "dart" | "swift" | "csharp" | "mixed";
 }

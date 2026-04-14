@@ -521,9 +521,55 @@ describe("Framework Detection", async () => {
     });
     const project = await mods.detectProject(dir);
     assert.equal(project.isMonorepo, true);
+    assert.equal(project.repoType, "monorepo");
     assert.ok(project.workspaces.length >= 2);
     assert.ok(project.frameworks.includes("hono"));
     assert.equal(project.componentFramework, "react");
+  });
+});
+
+describe("Repo Type Classification", async () => {
+  const mods = await loadModules();
+
+  it("classifies single-project repo as 'single'", async () => {
+    const dir = await writeFixture("repotype-single", {
+      "package.json": JSON.stringify({ name: "my-app", dependencies: { express: "^4.0.0" } }),
+    });
+    const project = await mods.detectProject(dir);
+    assert.equal(project.repoType, "single");
+    assert.equal(project.isMonorepo, false);
+  });
+
+  it("classifies meta-repo via .gitmodules", async () => {
+    const dir = await writeFixture("repotype-meta", {
+      ".gitmodules": `[submodule "frontend-app"]\n\tpath = frontend-app\n\turl = https://github.com/org/frontend-app\n[submodule "backend-api"]\n\tpath = backend-api\n\turl = https://github.com/org/backend-api\n`,
+      "frontend-app/package.json": JSON.stringify({ name: "frontend-app", dependencies: { react: "^18.0.0" } }),
+      "backend-api/package.json": JSON.stringify({ name: "backend-api", dependencies: { express: "^4.0.0" } }),
+    });
+    const project = await mods.detectProject(dir);
+    assert.equal(project.repoType, "meta");
+  });
+
+  it("classifies microservices repo via multiple Dockerfiles", async () => {
+    const dir = await writeFixture("repotype-microservices-docker", {
+      "auth/package.json": JSON.stringify({ name: "auth-service", dependencies: { express: "^4.0.0" } }),
+      "auth/Dockerfile": "FROM node:20\nCMD [\"node\", \"index.js\"]",
+      "payments/package.json": JSON.stringify({ name: "payments-service", dependencies: { fastify: "^4.0.0" } }),
+      "payments/Dockerfile": "FROM node:20\nCMD [\"node\", \"index.js\"]",
+    });
+    const project = await mods.detectProject(dir);
+    assert.equal(project.repoType, "microservices");
+    assert.equal(project.isMonorepo, true);
+  });
+
+  it("classifies microservices repo via k8s directory", async () => {
+    const dir = await writeFixture("repotype-microservices-k8s", {
+      "k8s/deployment.yaml": "apiVersion: apps/v1\nkind: Deployment",
+      "api/package.json": JSON.stringify({ name: "api", dependencies: { hono: "^4.0.0" } }),
+      "worker/package.json": JSON.stringify({ name: "worker", dependencies: { bullmq: "^5.0.0" } }),
+    });
+    const project = await mods.detectProject(dir);
+    assert.equal(project.repoType, "microservices");
   });
 });
 

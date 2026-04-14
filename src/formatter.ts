@@ -379,7 +379,10 @@ function formatCombined(
   lines.push(`> **Stack:** ${fw} | ${orm} | ${compFw} | ${lang}`);
   if (result.project.isMonorepo) {
     const wsNames = result.project.workspaces.map((w) => w.name).join(", ");
-    lines.push(`> **Monorepo:** ${wsNames}`);
+    const repoLabel = result.project.repoType === "meta" ? "Meta-repo"
+      : result.project.repoType === "microservices" ? "Microservices"
+      : "Monorepo";
+    lines.push(`> **${repoLabel}:** ${wsNames}`);
   }
   lines.push("");
 

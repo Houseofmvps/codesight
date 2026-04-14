@@ -96,7 +96,7 @@ ${project.frameworks.map((f) => `<span class="stack-badge">${escapeHtml(f)}</spa
 ${project.orms.map((o) => `<span class="stack-badge">${escapeHtml(o)}</span>`).join("")}
 <span class="stack-badge">${escapeHtml(project.componentFramework)}</span>
 <span class="stack-badge">${escapeHtml(project.language)}</span>
-${project.isMonorepo ? '<span class="stack-badge">monorepo</span>' : ""}
+${project.repoType !== "single" ? `<span class="stack-badge">${escapeHtml(project.repoType)}</span>` : ""}
 </div>
 
 <div class="token-hero">

@@ -6,6 +6,7 @@ import type {
   ORM,
   ComponentFramework,
   ProjectInfo,
+  RepoType,
   WorkspaceInfo,
 } from "./types.js";
 
@@ -222,6 +223,8 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
   // Treat as implicit monorepo when multiple distinct stacks are found
   if (!isMonorepo && workspaces.length >= 2) isMonorepo = true;
 
+  const repoType = await classifyRepoType(root, workspaces, isMonorepo);
+
   // Aggregate all workspace deps (always — not just for declared monorepos)
   let allDeps = { ...deps };
   for (const ws of workspaces) {
@@ -300,6 +303,7 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
     orms,
     componentFramework: detectComponentFramework(allDeps, frameworks),
     isMonorepo,
+    repoType,
     workspaces,
     language,
   };
@@ -340,6 +344,44 @@ async function discoverImplicitWorkspaces(
       } catch {}
     }
   } catch {}
+}
+
+/**
+ * Classify the repo structure into one of: single, monorepo, microservices, meta.
+ *
+ * - meta:          .gitmodules exists → git submodules mean independent projects are
+ *                  aggregated here (e.g. org-wide umbrella repos)
+ * - microservices: multiple workspaces each with their own Dockerfile, or infra dirs
+ *                  (k8s/, kubernetes/, helm/) are present alongside 2+ workspaces
+ * - monorepo:      multiple workspaces under shared tooling (packages.json workspaces,
+ *                  pnpm-workspace.yaml, turbo.json, nx.json, etc.)
+ * - single:        single-project repo with no workspaces
+ */
+async function classifyRepoType(
+  root: string,
+  workspaces: WorkspaceInfo[],
+  isMonorepo: boolean
+): Promise<RepoType> {
+  // Meta-repo: git submodules are the definitive signal
+  if (await fileExists(join(root, ".gitmodules"))) return "meta";
+
+  if (!isMonorepo || workspaces.length <= 1) return "single";
+
+  // Microservices: 2+ workspaces each with a Dockerfile, or infra orchestration at root
+  const infraDirs = ["k8s", "kubernetes", "helm"];
+  for (const dir of infraDirs) {
+    if (await fileExists(join(root, dir))) return "microservices";
+  }
+
+  let dockerfileCount = 0;
+  for (const ws of workspaces) {
+    if (await fileExists(join(root, ws.path, "Dockerfile"))) {
+      dockerfileCount++;
+      if (dockerfileCount >= 2) return "microservices";
+    }
+  }
+
+  return "monorepo";
 }
 
 async function hasDirectWorkspaceManifest(dir: string): Promise<boolean> {

@@ -268,7 +268,10 @@ async function toolGetSummary(args: any): Promise<string> {
   lines.push(`# ${project.name}`);
   lines.push(`Stack: ${fw} | ${orm} | ${project.componentFramework} | ${project.language}`);
   if (project.isMonorepo) {
-    lines.push(`Monorepo: ${project.workspaces.map((w) => w.name).join(", ")}`);
+    const repoLabel = project.repoType === "meta" ? "Meta-repo"
+      : project.repoType === "microservices" ? "Microservices"
+      : "Monorepo";
+    lines.push(`${repoLabel}: ${project.workspaces.map((w) => w.name).join(", ")}`);
   }
   lines.push("");
   lines.push(
