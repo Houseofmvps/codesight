@@ -1,0 +1,11 @@
+version: 2.1
+jobs:
+  test:
+    docker:
+      - image: node:18
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - test

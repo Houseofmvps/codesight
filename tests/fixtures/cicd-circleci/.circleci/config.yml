@@ -1,0 +1,11 @@
+version: 2.1
+jobs:
+  test:
+    docker:
+      - image: cimg/node:18.0
+    steps:
+      - checkout
+workflows:
+  ci:
+    jobs:
+      - test
