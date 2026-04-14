@@ -46,7 +46,7 @@ export function formatCICD(pipelines: CICDPipeline[]): string {
       for (const j of p.jobs) {
         const needs = j.needs?.length ? ` (needs: ${j.needs.join(", ")})` : "";
         const runner = j.runner ? ` on \`${j.runner}\`` : "";
-        const steps = j.stepCount > 0 ? `${j.stepCount} steps` : "approval gate";
+        const steps = j.runner === "approval-gate" ? "approval gate" : `${j.stepCount} steps`;
         const deploy = j.deployTarget ? ` \u2192 **${j.deployTarget}**` : "";
         lines.push(`- **${j.name}**${runner} \u2014 ${steps}${needs}${deploy}`);
         if (j.actions?.length) {

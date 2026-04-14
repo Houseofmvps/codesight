@@ -1,4 +1,4 @@
-import { basename } from "node:path";
+import { basename, extname } from "node:path";
 import type { CICDPipeline, CICDTrigger, CICDJob } from "./types.js";
 
 /**
@@ -11,7 +11,7 @@ export function extractGitHubActionsWorkflow(
 ): CICDPipeline | null {
   if (!parsed || typeof parsed !== "object") return null;
 
-  const name = parsed.name || basename(relPath, ".yml").replace(/-/g, " ");
+  const name = parsed.name || basename(relPath, extname(relPath)).replace(/-/g, " ");
   const triggers = extractTriggers(parsed.on || parsed.true); // YAML parses bare `on:` as `true:` sometimes
   const jobs = extractJobs(parsed.jobs);
   const reusableWorkflows = collectReusableWorkflowRefs(parsed.jobs);
@@ -52,15 +52,15 @@ function extractTriggers(on: any): CICDTrigger[] {
   if (typeof on === "object") {
     return Object.entries(on).map(([event, config]: [string, any]) => {
       const trigger: CICDTrigger = { event };
-      if (config && typeof config === "object") {
+      if (typeof config === "string") {
+        trigger.schedule = config;
+      } else if (Array.isArray(config) && config[0]?.cron) {
+        // schedule is an array of cron objects
+        trigger.schedule = config[0].cron;
+      } else if (config && typeof config === "object") {
         if (config.branches) trigger.branches = asArray(config.branches);
         if (config.paths) trigger.paths = asArray(config.paths);
         if (config.inputs) trigger.inputs = Object.keys(config.inputs);
-        if (typeof config === "string") trigger.schedule = config;
-        // schedule is an array of cron objects
-        if (Array.isArray(config) && config[0]?.cron) {
-          trigger.schedule = config[0].cron;
-        }
       }
       return trigger;
     });

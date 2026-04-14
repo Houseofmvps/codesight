@@ -304,8 +304,10 @@ function parseScalar(s: string): any {
       (s.startsWith("'") && s.endsWith("'"))) {
     return s.slice(1, -1);
   }
-  // Numbers — only if the entire string is numeric and not a version-like pattern
-  if (/^-?\d+(\.\d+)?$/.test(s) && !s.startsWith("0") || s === "0") {
+  // Numbers — only if the entire string is numeric and not a leading-zero integer (version-like)
+  const isNumeric = /^-?\d+(\.\d+)?$/.test(s);
+  const isLeadingZeroInteger = /^0\d+$/.test(s);
+  if (isNumeric && !isLeadingZeroInteger) {
     const n = Number(s);
     if (!isNaN(n)) return n;
   }
@@ -317,6 +319,8 @@ function stripComment(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (inQuote) {
+      // Handle escaped quotes in double-quoted strings
+      if (c === "\\" && inQuote === '"') { i++; continue; }
       if (c === inQuote) inQuote = null;
       continue;
     }
