@@ -59,18 +59,21 @@ export function createCICDPlugin(config: CICDPluginConfig = {}): CodesightPlugin
         }
       }
 
-      // CircleCI — discover from .circleci/ directly
+      // CircleCI — discover from .circleci/ directly (.yml and .yaml)
       if (systems.has("circleci")) {
-        const circleFile = join(project.root, ".circleci", "config.yml");
-        const content = await readFileSafe(circleFile);
-        if (content) {
-          try {
-            const parsed = parseYAML(content);
-            const relPath = relative(project.root, circleFile).replace(/\\/g, "/");
-            const extracted = extractCircleCIWorkflows(parsed, relPath, content);
-            pipelines.push(...extracted);
-          } catch {
-            // Skip unparseable files
+        for (const ext of ["config.yml", "config.yaml"]) {
+          const circleFile = join(project.root, ".circleci", ext);
+          const content = await readFileSafe(circleFile);
+          if (content) {
+            try {
+              const parsed = parseYAML(content);
+              const relPath = relative(project.root, circleFile).replace(/\\/g, "/");
+              const extracted = extractCircleCIWorkflows(parsed, relPath, content);
+              pipelines.push(...extracted);
+            } catch {
+              // Skip unparseable files
+            }
+            break; // Only one config file per project
           }
         }
       }

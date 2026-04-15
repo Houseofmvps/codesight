@@ -1,5 +1,7 @@
 import type { CICDPipeline } from "./types.js";
 
+const MAX_DISPLAYED_ACTIONS = 8;
+
 /**
  * Format CI/CD pipeline data into markdown for the custom section output.
  */
@@ -25,11 +27,12 @@ export function formatCICD(pipelines: CICDPipeline[]): string {
       lines.push("| Workflow | Triggers | Jobs | Deploy | Environments |");
       lines.push("|---|---|---|---|---|");
       for (const p of regular) {
-        const triggers = p.triggers.map(t => t.event).join(", ") || "\u2014";
+        const name = escapeTableCell(p.name);
+        const triggers = escapeTableCell(p.triggers.map(t => t.event).join(", ") || "\u2014");
         const jobCount = String(p.jobs.length);
-        const deploys = uniqueNonEmpty(p.jobs.map(j => j.deployTarget)).join(", ") || "\u2014";
-        const envs = p.environments?.join(", ") || "\u2014";
-        lines.push(`| ${p.name} | ${triggers} | ${jobCount} | ${deploys} | ${envs} |`);
+        const deploys = escapeTableCell(uniqueNonEmpty(p.jobs.map(j => j.deployTarget)).join(", ") || "\u2014");
+        const envs = escapeTableCell(p.environments?.join(", ") || "\u2014");
+        lines.push(`| ${name} | ${triggers} | ${jobCount} | ${deploys} | ${envs} |`);
       }
       lines.push("");
     }
@@ -50,11 +53,11 @@ export function formatCICD(pipelines: CICDPipeline[]): string {
         const deploy = j.deployTarget ? ` \u2192 **${j.deployTarget}**` : "";
         lines.push(`- **${j.name}**${runner} \u2014 ${steps}${needs}${deploy}`);
         if (j.actions?.length) {
-          for (const a of j.actions.slice(0, 8)) { // Cap at 8 to avoid noise
+          for (const a of j.actions.slice(0, MAX_DISPLAYED_ACTIONS)) {
             lines.push(`  - \`${a}\``);
           }
-          if (j.actions.length > 8) {
-            lines.push(`  - _...and ${j.actions.length - 8} more_`);
+          if (j.actions.length > MAX_DISPLAYED_ACTIONS) {
+            lines.push(`  - _...and ${j.actions.length - MAX_DISPLAYED_ACTIONS} more_`);
           }
         }
       }
@@ -102,4 +105,9 @@ function systemLabel(system: string): string {
 
 function uniqueNonEmpty(arr: (string | undefined)[]): string[] {
   return [...new Set(arr.filter(Boolean) as string[])];
+}
+
+/** Escape pipe characters so they don't break markdown table cells. */
+function escapeTableCell(s: string): string {
+  return s.replace(/\|/g, "\\|");
 }

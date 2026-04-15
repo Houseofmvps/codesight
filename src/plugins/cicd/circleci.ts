@@ -127,13 +127,15 @@ function extractTriggers(
   const seenEvents = new Set<string>();
 
   // Check for parameter-based triggers (manual/conditional)
+  const paramInputs: string[] = [];
   for (const [pName, pDef] of Object.entries(parameters)) {
     if (pDef && typeof pDef === "object" && pDef.type === "boolean") {
-      if (!seenEvents.has("parameter")) {
-        triggers.push({ event: "parameter", inputs: [pName] });
-        seenEvents.add("parameter");
-      }
+      paramInputs.push(pName);
     }
+  }
+  if (paramInputs.length > 0) {
+    triggers.push({ event: "parameter", inputs: paramInputs });
+    seenEvents.add("parameter");
   }
 
   // Extract triggers from job filters
@@ -153,7 +155,7 @@ function extractTriggers(
     if (filters.tags) {
       if (!seenEvents.has("tag")) {
         const trigger: CICDTrigger = { event: "tag" };
-        if (filters.tags.only) trigger.branches = asArray(filters.tags.only);
+        if (filters.tags.only) trigger.tags = asArray(filters.tags.only);
         triggers.push(trigger);
         seenEvents.add("tag");
       }

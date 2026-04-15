@@ -3,6 +3,7 @@ export type CICDSystem = "github-actions" | "circleci";
 export interface CICDTrigger {
   event: string;
   branches?: string[];
+  tags?: string[];
   paths?: string[];
   inputs?: string[];
   schedule?: string;

@@ -44,7 +44,7 @@ function parseMapping(
   startIdx: number,
   baseIndent: number,
 ): { value: Record<string, any>; nextIdx: number } {
-  const obj: Record<string, any> = {};
+  const obj: Record<string, any> = Object.create(null);
   let i = startIdx;
 
   while (i < lines.length) {
@@ -273,9 +273,10 @@ export function parseFlowSequence(s: string): any[] {
   const inner = s.slice(1, end).trim();
   if (!inner) return [];
 
-  // Split on commas respecting quotes
+  // Split on top-level commas respecting quotes and nested brackets
   const items: string[] = [];
   let current = "";
+  let bracketDepth = 0;
   inQuote = null;
   for (let i = 0; i < inner.length; i++) {
     const c = inner[i];
@@ -285,7 +286,9 @@ export function parseFlowSequence(s: string): any[] {
       continue;
     }
     if (c === '"' || c === "'") { inQuote = c; current += c; continue; }
-    if (c === ",") { items.push(current.trim()); current = ""; continue; }
+    if (c === "[") { bracketDepth++; current += c; continue; }
+    if (c === "]") { bracketDepth--; current += c; continue; }
+    if (c === "," && bracketDepth === 0) { items.push(current.trim()); current = ""; continue; }
     current += c;
   }
   if (current.trim()) items.push(current.trim());
@@ -306,7 +309,7 @@ function parseScalar(s: string): any {
   }
   // Numbers — only if the entire string is numeric and not a leading-zero integer (version-like)
   const isNumeric = /^-?\d+(\.\d+)?$/.test(s);
-  const isLeadingZeroInteger = /^0\d+$/.test(s);
+  const isLeadingZeroInteger = /^-?0\d+$/.test(s);
   if (isNumeric && !isLeadingZeroInteger) {
     const n = Number(s);
     if (!isNaN(n)) return n;
@@ -343,6 +346,7 @@ function findKeyColon(s: string): number {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (inQuote) {
+      if (c === "\\" && inQuote === '"') { i++; continue; }
       if (c === inQuote) inQuote = null;
       continue;
     }
