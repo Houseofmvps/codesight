@@ -4,7 +4,7 @@
 
 > 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 40 lib files | 6 env vars | 5 middleware | 6 events | 60% test coverage
 > **Token savings:** this file is ~3,500 tokens. Without it, AI exploration would cost ~25,900 tokens. **Saves ~22,400 tokens per conversation.**
-> **Last scanned:** 2026-04-14 18:42 — re-run after significant changes
+> **Last scanned:** 2026-04-17 22:42 — re-run after significant changes
 
 ---
 
@@ -12,8 +12,8 @@
 
 - `ALL` `/path` [auth, db, cache, queue, email, payment, upload, ai] `[inferred]`
 - `ALL` `/api` [auth, db, cache, queue, email, payment, upload, ai] `[inferred]`
-- `ALL` `/health` [auth, db, queue] `[inferred]` ✓
-- `GET` `/api/users` [auth, db, queue] `[inferred]` ✓
+- `ALL` `/health` [auth, db, cache, queue, payment] `[inferred]` ✓
+- `GET` `/api/users` [auth, db, cache, queue, payment] `[inferred]` ✓
 
 ## GraphQL
 

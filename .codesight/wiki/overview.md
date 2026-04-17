@@ -10,10 +10,10 @@
 
 ## Subsystems
 
-- **[Detectors.test](./detectors.test.md)** — 1 routes — touches: auth, db, queue
+- **[Detectors.test](./detectors.test.md)** — 1 routes — touches: auth, db, cache, queue, payment
 - **[Graphql](./graphql.md)** — 4 routes
 - **[Path](./path.md)** — 1 routes — touches: auth, db, cache, queue, email
-- **[Infra](./infra.md)** — 1 routes — touches: auth, db, queue
+- **[Infra](./infra.md)** — 1 routes — touches: auth, db, cache, queue, payment
 - **[Api](./api.md)** — 1 routes — touches: auth, db, cache, queue, email
 
 **Libraries:** 40 files — see [libraries.md](./libraries.md)
@@ -38,4 +38,4 @@ Changes to these files have the widest blast radius across the codebase:
 - `VITE_VAR_NAME` — `src/detectors/config.ts`
 
 ---
-_Back to [index.md](./index.md) · Generated 2026-04-14_
+_Back to [index.md](./index.md) · Generated 2026-04-17_

@@ -2,11 +2,11 @@
 
 > **Navigation aid.** Route list and file locations extracted via AST. Read the source files listed below before implementing or modifying this subsystem.
 
-The Detectors.test subsystem handles **1 routes** and touches: auth, db, queue.
+The Detectors.test subsystem handles **1 routes** and touches: auth, db, cache, queue, payment.
 
 ## Routes
 
-- `GET` `/api/users` [auth, db, queue] `[inferred]`
+- `GET` `/api/users` [auth, db, cache, queue, payment] `[inferred]`
   `tests/detectors.test.ts`
 
 ## Source Files
