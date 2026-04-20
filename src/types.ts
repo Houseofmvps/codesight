@@ -216,6 +216,13 @@ export interface CodesightConfig {
   plugins?: CodesightPlugin[];
   /** Monorepo configuration */
   monorepo?: MonorepoConfig;
+  /**
+   * Roku only: helper names used in BRS to open a screen/view. Defaults to
+   * ["ShowScreen", "showScreen", "pushScreen", "PushScreen", "NavigateTo",
+   *  "navigateTo", "showView", "ShowView"]. Override when your project uses
+   * a different navigation helper convention.
+   */
+  rokuScreenHelpers?: string[];
 }
 
 export interface CodesightPlugin {

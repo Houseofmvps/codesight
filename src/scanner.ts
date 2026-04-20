@@ -325,15 +325,21 @@ async function discoverImplicitWorkspaces(
   repoRoot: string,
   workspaces: WorkspaceInfo[]
 ): Promise<void> {
-  // Roku repos often nest channels under src/apps/<creator>/ (depth 3+ from root).
-  // Do a dedicated deeper walk for `manifest` files before the generic depth-2 pass.
+  // Roku multi-channel monorepo: signal requires roku-deploy + a
+  // `common/` + >=2 sibling-channel structure. Won't fire on the 90% single-
+  // channel case or on non-Roku repos that happen to have a `manifest` file.
   try {
-    const rokuDirs = await findRokuManifestDirs(repoRoot, 4);
-    for (const dir of rokuDirs) {
-      if (dir === repoRoot) continue; // root is handled by detectProject itself
-      const wsInfo = await detectNonJSWorkspace(repoRoot, dir, basename(dir));
-      if (wsInfo && !workspaces.some((w) => w.path === wsInfo.path)) {
-        workspaces.push(wsInfo);
+    const rokuMono = await detectRokuMonorepo(repoRoot);
+    if (rokuMono) {
+      // Each channel dir becomes a workspace. The `common/` dir isn't a
+      // shippable channel, but it contains the bulk of the shared code —
+      // register it as a workspace too so its components/schemas show up.
+      const dirs = [rokuMono.commonDir, ...rokuMono.channelDirs];
+      for (const dir of dirs) {
+        const wsInfo = await detectNonJSWorkspace(repoRoot, dir, basename(dir));
+        if (wsInfo && !workspaces.some((w) => w.path === wsInfo.path)) {
+          workspaces.push(wsInfo);
+        }
       }
     }
   } catch {}
@@ -641,8 +647,10 @@ async function detectFrameworks(
     } catch {}
   }
 
-  // Roku / SceneGraph — plain-text `manifest` file at root with title + major_version
-  if (await hasRokuManifest(root)) {
+  // Roku / SceneGraph — plain-text `manifest` file at root with title + major_version.
+  // Also matches the rokucommunity/brighterscript-template layout where the
+  // manifest lives under `src/` and root carries a bsconfig.json marker.
+  if (await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root)) {
     frameworks.push("roku-scenegraph");
   }
 
@@ -748,7 +756,9 @@ async function detectORMs(
   // Roku / SceneGraph — every SceneGraph component's <interface> is a typed
   // contract (name + typed fields), which is the core "schema model" notion
   // codesight expresses. Auto-add whenever the Roku channel is detected.
-  if (await hasRokuManifest(root)) orms.push("scenegraph");
+  if (await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root)) {
+    orms.push("scenegraph");
+  }
 
   // Entity Framework (ASP.NET) — check all csproj files
   const allCsprojForOrm = await findAllCsproj(root);
@@ -806,7 +816,7 @@ async function detectLanguage(
   const hasCsproj = await (async () => {
     try { return (await readdir(root)).some((e) => e.endsWith(".csproj") || e.endsWith(".sln")); } catch { return false; }
   })();
-  const hasRokuChannel = await hasRokuManifest(root);
+  const hasRokuChannel = await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root);
 
   const langs: string[] = [];
   if (hasTsConfig || deps["typescript"]) langs.push("typescript");
@@ -1303,34 +1313,123 @@ export async function hasRokuManifest(dir: string): Promise<boolean> {
 }
 
 /**
- * Walk up to a shallow depth looking for any Roku manifest. This is used to
- * detect Roku repos whose channel directories live under a conventional
- * `src/apps/<creator>/` tree rather than at the repo root.
+ * Detect the `rokucommunity/brighterscript-template` layout:
+ *   - no manifest at root
+ *   - bsconfig.json at root (BrighterScript project marker)
+ *   - exactly one `src/manifest` with the standard channel signature
+ *
+ * Treat the root as a single Roku channel rooted at `src/`. Prevents the
+ * generic monorepo walker from promoting `src/` to a workspace and leaving
+ * the root framework as `raw-http`.
  */
-export async function findRokuManifestDirs(root: string, maxDepth = 4): Promise<string[]> {
-  const results: string[] = [];
-  const skip = new Set(["node_modules", ".git", "out", "dist", "build", ".roku-deploy-staging", "roku_modules"]);
+export async function detectBrighterScriptTemplateRoot(dir: string): Promise<boolean> {
+  if (await hasRokuManifest(dir)) return false;
+  const bsConfigPath = join(dir, "bsconfig.json");
+  try {
+    await stat(bsConfigPath);
+  } catch {
+    return false;
+  }
+  return hasRokuManifest(join(dir, "src"));
+}
 
-  async function walk(dir: string, depth: number): Promise<void> {
-    if (depth > maxDepth) return;
-    if (await hasRokuManifest(dir)) {
-      results.push(dir);
-      // Don't descend into a confirmed channel — sub-components live here,
-      // not further channels.
-      return;
-    }
-    try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const e of entries) {
-        if (!e.isDirectory()) continue;
-        if (e.name.startsWith(".") || skip.has(e.name) || IGNORE_DIRS.has(e.name)) continue;
-        await walk(join(dir, e.name), depth + 1);
-      }
-    } catch {}
+/**
+ * Detect a Roku multi-channel monorepo layout. 90% of Roku repos are
+ * single-channel (manifest at root), but a small set of larger codebases
+ * ship multiple channels from one repo using `roku-deploy` + `gulp` to merge
+ * per-channel assets with a shared `common/` layer at build time.
+ *
+ * Required signals (all must hold):
+ *   1. No manifest at `root` (otherwise it's a standard single-channel repo)
+ *   2. `root/package.json` declares `roku-deploy` in deps or devDeps
+ *   3. Some container dir `C` contains:
+ *        - a `common/` subdirectory, AND
+ *        - at least 2 sibling directories of `common/` that each have their
+ *          own `manifest` file
+ *
+ * When these match, returns `{ containerDir, channelDirs, commonDir }`.
+ * Otherwise returns null and the caller treats the repo as single-channel
+ * (or not a Roku repo at all).
+ */
+export async function detectRokuMonorepo(
+  root: string
+): Promise<{ containerDir: string; channelDirs: string[]; commonDir: string } | null> {
+  // Signal 1: no root manifest
+  if (await hasRokuManifest(root)) return null;
+
+  // Signal 2: roku-deploy in package.json
+  try {
+    const pkgRaw = await readFile(join(root, "package.json"), "utf-8");
+    const pkg = JSON.parse(pkgRaw) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+    if (!deps["roku-deploy"]) return null;
+  } catch {
+    return null;
   }
 
-  await walk(root, 0);
-  return results;
+  // Signal 3: find a container dir with common/ + >=2 sibling channels.
+  // Limit search to shallow depth; the common-plus-channels layout is always
+  // near the top of the repo tree (usually at root or one level down).
+  const skip = new Set([
+    "node_modules", ".git", "out", "dist", "build",
+    ".roku-deploy-staging", "roku_modules", ".gradle",
+  ]);
+
+  const visit = async (dir: string): Promise<{ containerDir: string; channelDirs: string[]; commonDir: string } | null> => {
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+
+    const subdirs = entries.filter(
+      (e) => e.isDirectory() && !e.name.startsWith(".") && !skip.has(e.name) && !IGNORE_DIRS.has(e.name)
+    );
+    const commonDir = subdirs.find((e) => e.name.toLowerCase() === "common");
+    if (commonDir) {
+      const channelDirs: string[] = [];
+      for (const sub of subdirs) {
+        if (sub === commonDir) continue;
+        if (await hasRokuManifest(join(dir, sub.name))) {
+          channelDirs.push(join(dir, sub.name));
+        }
+      }
+      if (channelDirs.length >= 2) {
+        return {
+          containerDir: dir,
+          channelDirs,
+          commonDir: join(dir, commonDir.name),
+        };
+      }
+    }
+    return null;
+  };
+
+  // Try root first, then common one-level-deep parents (e.g. `src/apps/`).
+  const hit = await visit(root);
+  if (hit) return hit;
+  try {
+    const topEntries = await readdir(root, { withFileTypes: true });
+    for (const e of topEntries) {
+      if (!e.isDirectory() || e.name.startsWith(".") || skip.has(e.name) || IGNORE_DIRS.has(e.name)) continue;
+      const firstLevel = join(root, e.name);
+      const firstHit = await visit(firstLevel);
+      if (firstHit) return firstHit;
+      // One more level — covers e.g. `src/apps/` where `src/` itself holds the container.
+      try {
+        const nested = await readdir(firstLevel, { withFileTypes: true });
+        for (const n of nested) {
+          if (!n.isDirectory() || n.name.startsWith(".") || skip.has(n.name) || IGNORE_DIRS.has(n.name)) continue;
+          const secondLevel = join(firstLevel, n.name);
+          const secondHit = await visit(secondLevel);
+          if (secondHit) return secondHit;
+        }
+      } catch {}
+    }
+  } catch {}
+
+  return null;
 }
 
 async function fileExists(path: string): Promise<boolean> {

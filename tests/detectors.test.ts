@@ -865,6 +865,153 @@ end class
 describe("Roku SceneGraph Detection", async () => {
   const mods = await loadModules();
 
+  it("detects a kernel-roku-style single-channel project from <children> alone (no ShowScreen helper)", async () => {
+    // 90% of Roku repos look like this: manifest at root, source/ + components/,
+    // no custom navigation helper. The route surface comes entirely from
+    // MainScene.xml's <children> slots.
+    const dir = await writeFixture("roku-standard-channel", {
+      "manifest": ROKU_MANIFEST,
+      "source/Main.brs": `sub Main()
+    screen = CreateObject("roSGScreen")
+    port = CreateObject("roMessagePort")
+    screen.setMessagePort(port)
+    scene = screen.CreateScene("MainScene")
+    screen.show()
+    while true
+        msg = wait(0, port)
+        msgType = type(msg)
+        if msgType = "roSGScreenEvent"
+            if msg.isScreenClosed() then return
+        end if
+    end while
+end sub
+`,
+      "components/MainScene.xml": `<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+  <children>
+    <HomeView id="homeView" visible="true" />
+    <DetailView id="detailView" visible="false" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+</component>
+`,
+      "components/MainScene.brs": `sub init()
+    m.homeView = m.top.findNode("homeView")
+    m.detailView = m.top.findNode("detailView")
+    m.homeView.setFocus(true)
+end sub
+
+sub onItemSelected()
+    m.homeView.visible = false
+    m.detailView.visible = true
+    m.detailView.setFocus(true)
+end sub
+`,
+      "components/views/HomeView.xml": `<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeView" extends="Group">
+  <interface>
+    <field id="items" type="array" />
+  </interface>
+</component>
+`,
+      "components/views/DetailView.xml": `<?xml version="1.0" encoding="utf-8" ?>
+<component name="DetailView" extends="Group">
+  <interface>
+    <field id="itemId" type="String" />
+  </interface>
+</component>
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    assert.equal(project.language, "brightscript", `language: got ${project.language}`);
+    assert.ok(project.frameworks.includes("roku-scenegraph"));
+    assert.ok(!project.isMonorepo, "standard single-channel repo must not be flagged as monorepo");
+
+    const files = await mods.collectFiles(dir);
+    const routes = await mods.detectRoutes(files, project);
+
+    // Expect exactly two VIEW routes, derived purely from MainScene <children>.
+    // No ShowScreen helper exists in this fixture — the detector must not
+    // depend on one.
+    assert.equal(routes.length, 2, `expected 2 routes, got ${routes.length}: ${routes.map((r: any) => `${r.method} ${r.path}`).join(", ")}`);
+    const home = routes.find((r: any) => r.path === "/homeView");
+    const detail = routes.find((r: any) => r.path === "/detailView");
+    assert.ok(home, "expected /homeView route");
+    assert.equal(home.method, "VIEW");
+    assert.ok(home.file.endsWith("HomeView.xml"), `expected HomeView.xml, got ${home.file}`);
+    assert.ok(detail, "expected /detailView route");
+    assert.equal(detail.method, "VIEW");
+    assert.ok(detail.file.endsWith("DetailView.xml"));
+  });
+
+  it("detects rokucommunity/brighterscript-template layout (bsconfig.json + src/manifest)", async () => {
+    // BrighterScript template: TS tooling at root, actual Roku channel under src/.
+    const dir = await writeFixture("roku-brighterscript-template", {
+      "package.json": JSON.stringify({
+        name: "my-bsc-app",
+        devDependencies: { brighterscript: "^0.71.0" },
+      }),
+      "bsconfig.json": JSON.stringify({ rootDir: "src", files: ["**/*"] }),
+      "src/manifest": ROKU_MANIFEST,
+      "src/source/Main.brs": `sub Main()\n    screen = CreateObject("roSGScreen")\nend sub\n`,
+      "src/source/Utils.bs": `namespace app.utils\n    function greet() as string\n        return "hi"\n    end function\nend namespace\n`,
+      "src/components/MainScene.xml": `<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+  <children>
+    <HomeView id="homeView" />
+  </children>
+</component>
+`,
+      "src/components/HomeView.xml": `<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeView" extends="Group">
+  <interface>
+    <field id="title" type="String" />
+  </interface>
+</component>
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    // Root must be identified as the Roku channel, not a workspace holder.
+    assert.ok(
+      project.frameworks.includes("roku-scenegraph"),
+      `expected root roku-scenegraph framework, got ${project.frameworks.join(", ")}`
+    );
+    assert.ok(
+      !project.isMonorepo,
+      "brighterscript-template is a single-channel project, must not be promoted to monorepo"
+    );
+
+    const files = await mods.collectFiles(dir);
+    const routes = await mods.detectRoutes(files, project);
+    const schemas = await mods.detectSchemas(files, project);
+    const components = await mods.detectComponents(files, project);
+
+    assert.ok(routes.some((r: any) => r.path === "/homeView"), `expected /homeView, got ${routes.map((r: any) => r.path).join(", ")}`);
+    assert.ok(schemas.some((s: any) => s.name === "HomeView"), `expected HomeView schema, got ${schemas.map((s: any) => s.name).join(", ")}`);
+    const mainScene = components.find((c: any) => c.name === "MainScene");
+    assert.ok(mainScene, "expected MainScene component");
+    assert.ok(mainScene.file.startsWith("src/"), `expected src/-rooted path, got ${mainScene.file}`);
+  });
+
+  it("does not promote a standard single-channel repo to a monorepo even when package.json has roku-deploy", async () => {
+    // A repo with roku-deploy but no common/ + channels layout is still single-channel.
+    const dir = await writeFixture("roku-deploy-single-channel", {
+      "manifest": ROKU_MANIFEST,
+      "package.json": JSON.stringify({
+        name: "single-channel",
+        devDependencies: { "roku-deploy": "^3.10.0" },
+      }),
+      "components/MainScene.xml": `<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene"></component>
+`,
+    });
+    const project = await mods.detectProject(dir);
+    assert.ok(!project.isMonorepo, "single-channel repo must not be labeled monorepo");
+    assert.ok(project.frameworks.includes("roku-scenegraph"));
+  });
+
   it("detects Roku project + routes + schemas + components + libs + graph", async () => {
     const dir = await writeFixture("roku-channel", {
       "manifest": ROKU_MANIFEST,

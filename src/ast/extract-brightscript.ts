@@ -113,13 +113,59 @@ export function extractBrightScriptObservers(content: string): BrightScriptObser
 }
 
 /**
+ * Extract screen-open call-sites for a configurable set of helper names.
+ *
+ * Roku apps don't have a standard navigation helper — some use `ShowScreen`,
+ * others `pushScreen`, `NavigateTo`, `showView`, or project-specific names.
+ * This generalized form scans for any `<helperName>(target, [modal?])`
+ * call site where the target is a node variable or bare identifier.
+ *
+ * Returns one entry per call-site. `modal` is true when the second positional
+ * argument is the literal `true` (Roku BrightScript has no named args).
+ */
+export function extractBrightScriptNavigationCalls(
+  content: string,
+  helperNames: string[]
+): ShowScreenCall[] {
+  const out: ShowScreenCall[] = [];
+  if (helperNames.length === 0) return out;
+  const lines = content.split("\n");
+  const alternation = helperNames.map((h) => h.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const pattern = new RegExp(
+    `\\b(?:${alternation})\\s*\\(\\s*([^),]+?)\\s*(?:,\\s*(true|false|\\w+))?\\s*\\)`,
+    "gi"
+  );
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    pattern.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(line)) !== null) {
+      const target = m[1].trim();
+      // Skip obvious non-targets (empty string literal, string literal, number)
+      if (!target || /^["']/.test(target) || /^\d/.test(target)) continue;
+      const second = (m[2] ?? "").trim().toLowerCase();
+      out.push({
+        target,
+        modal: second === "true",
+        helper: "show",
+        line: i + 1,
+      });
+    }
+  }
+  return out;
+}
+
+/**
  * Extract screen-stack navigation call-sites.
  *
- * Matches the helpers named in the repo conventions used by this detector:
+ * Matches the FrontRow-style helpers:
  *   ShowScreen(target)
  *   ShowScreen(target, true)
  *   CloseScreen()
  *   GetCurrentScreen()
+ *
+ * Retained for back-compat; new code should prefer
+ * `extractBrightScriptNavigationCalls` which takes a configurable name set.
  */
 export function extractBrightScriptShowScreenCalls(content: string): ShowScreenCall[] {
   const out: ShowScreenCall[] = [];
