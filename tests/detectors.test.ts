@@ -748,3 +748,216 @@ class Post(Base):
     await assertFastApiSqlAlchemyDetection(mods, dir, "container-dir/custom-python-backend", ["container-dir"]);
   });
 });
+
+// =================== ROKU / SCENEGRAPH TESTS ===================
+//
+// Covers the full Roku pipeline: project detection, routes as screens,
+// schema from <interface> fields, components from XML, libs from .brs / .bs,
+// and dependency edges from <script uri="pkg:/..."> + BrighterScript imports.
+
+const ROKU_MANIFEST = `title=Test Channel\nmajor_version=1\nminor_version=0\nbuild_version=0\nui_resolutions=fhd\n`;
+
+const ROKU_MAIN_SCENE_XML = `<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+  <children>
+    <HomeView id="homeView" />
+    <LoginView id="loginView" />
+    <ErrorModal id="errorModal" />
+  </children>
+  <script type="text/brightscript" uri="pkg:/components/MainScene.brs" />
+</component>
+`;
+
+const ROKU_MAIN_SCENE_BRS = `sub init()
+    m.homeView = m.top.findNode("homeView")
+    m.loginView = m.top.findNode("loginView")
+    m.errorModal = m.top.findNode("errorModal")
+    m.top.observeField("someField", "handleSome")
+    m.global.AddField("token", "string", false)
+    ShowScreen(m.homeView)
+end sub
+
+sub showLogin()
+    ShowScreen(m.loginView, true)
+end sub
+
+sub showError()
+    ShowScreen(m.errorModal, true)
+end sub
+`;
+
+const ROKU_HOME_VIEW_XML = `<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeView" extends="Group">
+  <interface>
+    <field id="pageID" type="String" />
+    <field id="channelID" type="String" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/views/HomeView.brs" />
+</component>
+`;
+
+const ROKU_HOME_VIEW_BRS = `sub init()
+end sub
+`;
+
+const ROKU_LOGIN_VIEW_XML = `<?xml version="1.0" encoding="utf-8" ?>
+<component name="LoginView" extends="Group">
+  <interface>
+    <field id="email" type="String" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/views/LoginView.brs" />
+</component>
+`;
+
+const ROKU_LOGIN_VIEW_BRS = `sub init()
+end sub
+`;
+
+const ROKU_ERROR_MODAL_XML = `<?xml version="1.0" encoding="utf-8" ?>
+<component name="ErrorModal" extends="Group">
+  <interface>
+    <field id="message" type="String" />
+  </interface>
+</component>
+`;
+
+const ROKU_DATA_TASK_XML = `<?xml version="1.0" encoding="utf-8" ?>
+<component name="DataTask" extends="Task">
+  <interface>
+    <field id="requestUrl" type="String" />
+    <field id="response" type="assocarray" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/tasks/DataTask.brs" />
+</component>
+`;
+
+const ROKU_DATA_TASK_BRS = `sub init()
+    m.top.functionName = "fetchData"
+end sub
+
+function fetchData() as object
+    response = makeGraphqlCall(m.top.requestUrl, "{}", {})
+    return response
+end function
+`;
+
+const ROKU_UTILS_BRS = `function helperFormat(input as string) as string
+    return input
+end function
+
+sub helperLog(msg as string)
+    print msg
+end sub
+`;
+
+const ROKU_HELPERS_BS = `import "pkg:/source/utils/Utils.brs"
+
+namespace app.helpers
+end namespace
+
+class RokuHelper
+    function sayHi() as string
+        return "hi"
+    end function
+end class
+`;
+
+describe("Roku SceneGraph Detection", async () => {
+  const mods = await loadModules();
+
+  it("detects Roku project + routes + schemas + components + libs + graph", async () => {
+    const dir = await writeFixture("roku-channel", {
+      "manifest": ROKU_MANIFEST,
+      "components/MainScene.xml": ROKU_MAIN_SCENE_XML,
+      "components/MainScene.brs": ROKU_MAIN_SCENE_BRS,
+      "components/views/HomeView.xml": ROKU_HOME_VIEW_XML,
+      "components/views/HomeView.brs": ROKU_HOME_VIEW_BRS,
+      "components/views/LoginView.xml": ROKU_LOGIN_VIEW_XML,
+      "components/views/LoginView.brs": ROKU_LOGIN_VIEW_BRS,
+      "components/views/ErrorModal.xml": ROKU_ERROR_MODAL_XML,
+      "components/tasks/DataTask.xml": ROKU_DATA_TASK_XML,
+      "components/tasks/DataTask.brs": ROKU_DATA_TASK_BRS,
+      "source/utils/Utils.brs": ROKU_UTILS_BRS,
+      "source/Helpers.bs": ROKU_HELPERS_BS,
+    });
+
+    // 1. Project detection
+    const project = await mods.detectProject(dir);
+    assert.equal(project.language, "brightscript", `expected brightscript language, got ${project.language}`);
+    assert.ok(project.frameworks.includes("roku-scenegraph"), `expected roku-scenegraph framework, got ${project.frameworks.join(", ")}`);
+    assert.equal(project.componentFramework, "scenegraph", `expected scenegraph componentFramework, got ${project.componentFramework}`);
+    assert.ok(project.orms.includes("scenegraph"), `expected scenegraph orm, got ${project.orms.join(", ")}`);
+
+    const files = await mods.collectFiles(dir);
+
+    // 2. Routes: one VIEW per ShowScreen(m.homeView), MODAL for the 2nd-arg-true calls
+    const routes = await mods.detectRoutes(files, project);
+    const home = routes.find((r: any) => r.path === "/homeView");
+    const login = routes.find((r: any) => r.path === "/loginView");
+    const err = routes.find((r: any) => r.path === "/errorModal");
+    assert.ok(home, `expected /homeView route, got ${routes.map((r: any) => `${r.method} ${r.path}`).join(", ")}`);
+    assert.equal(home.method, "VIEW", `expected VIEW method, got ${home.method}`);
+    assert.ok(home.file.endsWith("HomeView.xml"), `expected file HomeView.xml, got ${home.file}`);
+    assert.ok(login, `expected /loginView route`);
+    assert.equal(login.method, "MODAL", `expected MODAL method, got ${login.method}`);
+    assert.ok(err, `expected /errorModal route`);
+    assert.equal(err.method, "MODAL");
+
+    // 3. Schemas: HomeView + LoginView + ErrorModal + DataTask (all have <interface>)
+    const schemas = await mods.detectSchemas(files, project);
+    const names = schemas.map((s: any) => s.name);
+    assert.ok(names.includes("HomeView"), `expected HomeView schema, got ${names.join(", ")}`);
+    assert.ok(names.includes("DataTask"), `expected DataTask schema, got ${names.join(", ")}`);
+    const dataTask = schemas.find((s: any) => s.name === "DataTask");
+    assert.equal(dataTask.orm, "scenegraph");
+    assert.ok(dataTask.fields.some((f: any) => f.name === "requestUrl" && f.type === "string"));
+    assert.ok(dataTask.fields.some((f: any) => f.name === "response" && f.type === "object"));
+
+    // 4. Components: every SceneGraph XML (MainScene, HomeView, LoginView, ErrorModal, DataTask)
+    const components = await mods.detectComponents(files, project);
+    const compNames = components.map((c: any) => c.name);
+    assert.ok(compNames.includes("HomeView"));
+    assert.ok(compNames.includes("DataTask"));
+    assert.ok(compNames.includes("MainScene"));
+    const homeComp = components.find((c: any) => c.name === "HomeView");
+    assert.deepEqual(homeComp.props.sort(), ["channelID", "pageID"]);
+
+    // 5. Libs: Utils.brs functions + Helpers.bs class + namespace + folded-in fns
+    const libs = await mods.detectLibs(files, project);
+    const utilsLib = libs.find((l: any) => l.file.endsWith("Utils.brs"));
+    assert.ok(utilsLib, `expected Utils.brs lib, got ${libs.map((l: any) => l.file).join(", ")}`);
+    assert.ok(utilsLib.exports.some((e: any) => e.name === "helperFormat" && e.kind === "function"));
+    assert.ok(utilsLib.exports.some((e: any) => e.name === "helperLog" && e.kind === "function"));
+
+    const helpersLib = libs.find((l: any) => l.file.endsWith("Helpers.bs"));
+    assert.ok(helpersLib, `expected Helpers.bs lib, got ${libs.map((l: any) => l.file).join(", ")}`);
+    assert.ok(helpersLib.exports.some((e: any) => e.name === "RokuHelper" && e.kind === "class"));
+
+    // 6. Dependency graph: BrighterScript `import` edge + MainScene.xml <script uri=...> edges
+    const graph = await mods.detectDependencyGraph(files, project);
+    const hasImportEdge = graph.edges.some(
+      (e: any) => e.from.endsWith("Helpers.bs") && e.to.endsWith("Utils.brs")
+    );
+    assert.ok(hasImportEdge, `expected Helpers.bs -> Utils.brs edge, got ${graph.edges.map((e: any) => `${e.from}->${e.to}`).join(", ")}`);
+    const hasScriptEdge = graph.edges.some(
+      (e: any) => e.from.endsWith("MainScene.xml") && e.to.endsWith("MainScene.brs")
+    );
+    assert.ok(hasScriptEdge, `expected MainScene.xml -> MainScene.brs edge, got ${graph.edges.map((e: any) => `${e.from}->${e.to}`).join(", ")}`);
+
+    // 7. Config: Roku manifest surfaces as env-like vars and shows up in configFiles
+    const config = await mods.detectConfig(files, project);
+    assert.ok(config.configFiles.includes("manifest"), `expected manifest in configFiles, got ${config.configFiles.join(", ")}`);
+    assert.ok(config.envVars.some((e: any) => e.name === "manifest.title"), `expected manifest.title env var, got ${config.envVars.map((e: any) => e.name).join(", ")}`);
+
+    // 8. Middleware: observeField + m.global.AddField show up as custom middleware
+    const middleware = await mods.detectMiddleware(files, project);
+    assert.ok(
+      middleware.some((mw: any) => mw.name.includes("observeField(someField)")),
+      `expected observeField middleware, got ${middleware.map((mw: any) => mw.name).join(", ")}`
+    );
+    assert.ok(
+      middleware.some((mw: any) => mw.name === "m.global.token: string"),
+      `expected m.global.token middleware, got ${middleware.map((mw: any) => mw.name).join(", ")}`
+    );
+  });
+});

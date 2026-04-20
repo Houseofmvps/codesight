@@ -48,6 +48,22 @@ export async function detectConfig(
     }
   }
 
+  // Roku channel `manifest` files are plain-text key/value configs — surface
+  // them in configFiles. Covers both root-level and per-creator channels.
+  if (project.frameworks.includes("roku-scenegraph")) {
+    const manifestHits = files.filter((f) => basename(f) === "manifest");
+    for (const m of manifestHits) {
+      const rel = relative(project.root, m);
+      if (!configFiles.includes(rel)) configFiles.push(rel);
+    }
+    // Root-level manifest may not be in `files` (no extension filter) — check
+    // directly for Roku monorepos whose channels live at nested paths.
+    const rootManifest = await readFileSafe(join(project.root, "manifest"));
+    if (rootManifest && /^\s*title\s*=/m.test(rootManifest) && !configFiles.includes("manifest")) {
+      configFiles.push("manifest");
+    }
+  }
+
   // Detect env vars
   const envVars = await detectEnvVars(files, project);
 
@@ -165,6 +181,57 @@ async function detectEnvVars(
       const name = match[1];
       if (!envMap.has(name)) {
         envMap.set(name, { name, source: rel, hasDefault: false });
+      }
+    }
+  }
+
+  // ─── Roku config sources ────────────────────────────────────────────────
+  //
+  // Roku apps don't use .env files — their runtime configuration lives in:
+  //   1. `manifest` (key=value, one entry per line) at the channel root
+  //   2. `appConfig.brs` (initConfig / initAppConfig functions returning an
+  //      associative array of constants)
+  // Both are surfaced as EnvVars so the AI context map highlights them.
+  if (project.frameworks.includes("roku-scenegraph")) {
+    const manifestFiles = files.filter((f) => basename(f) === "manifest");
+    // Fallback: check the root manifest directly too.
+    const rootManifestPath = join(project.root, "manifest");
+    try {
+      const rootManifest = await readFileSafe(rootManifestPath);
+      if (rootManifest && /^\s*title\s*=/m.test(rootManifest)) {
+        manifestFiles.push(rootManifestPath);
+      }
+    } catch {}
+
+    for (const mfile of manifestFiles) {
+      const content = await readFileSafe(mfile);
+      if (!content) continue;
+      const source = relative(project.root, mfile) || "manifest";
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const m = trimmed.match(/^([A-Za-z_][\w]*)\s*=\s*(.*)$/);
+        if (!m) continue;
+        const name = `manifest.${m[1]}`;
+        const hasDefault = m[2].trim().length > 0;
+        if (!envMap.has(name)) envMap.set(name, { name, source, hasDefault });
+      }
+    }
+
+    // appConfig.brs: recognise `CONSTANT_NAME: "value"` or `name = "value"` in
+    // init*Config functions. Only capture keys that look like config constants
+    // (UPPER_SNAKE_CASE) to avoid noisy captures of local variables.
+    const appConfigFiles = files.filter((f) => /appConfig\.brs$/i.test(f));
+    const constPattern = /\b([A-Z][A-Z0-9_]{2,})\s*[:=]\s*["']([^"']*)["']/g;
+    for (const file of appConfigFiles) {
+      const content = await readFileSafe(file);
+      if (!content) continue;
+      const source = relative(project.root, file).replace(/\\/g, "/");
+      let m: RegExpExecArray | null;
+      while ((m = constPattern.exec(content)) !== null) {
+        const name = m[1];
+        if (envMap.has(name)) continue;
+        envMap.set(name, { name, source, hasDefault: m[2].length > 0 });
       }
     }
   }

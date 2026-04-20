@@ -71,6 +71,9 @@ export async function detectSchemas(
       case "room":
         models.push(...(await detectRoomSchemas(files, project)));
         break;
+      case "scenegraph":
+        models.push(...(await detectSceneGraphSchemas(files, project)));
+        break;
     }
   }
 
@@ -1080,6 +1083,40 @@ async function detectRoomSchemas(
     if (!content || !content.includes("@Entity")) continue;
     const rel = relative(project.root, file).replace(/\\/g, "/");
     models.push(...extractRoomEntities(rel, content));
+  }
+
+  return models;
+}
+
+// ─── SceneGraph schemas ───────────────────────────────────────────────────────
+//
+// Each SceneGraph component XML may declare an <interface> listing typed
+// fields + functions that form the component's public contract. This is the
+// closest Roku analog to an ORM model — a name + typed field set.
+async function detectSceneGraphSchemas(
+  files: string[],
+  project: ProjectInfo
+): Promise<SchemaModel[]> {
+  const { extractSceneGraphComponent, isSceneGraphXml } = await import("../ast/extract-scenegraph.js");
+  const xmlFiles = files.filter((f) => f.endsWith(".xml"));
+  const models: SchemaModel[] = [];
+  const seen = new Set<string>();
+
+  for (const file of xmlFiles) {
+    const content = await readFileSafe(file);
+    if (!content || !isSceneGraphXml(content)) continue;
+    const comp = extractSceneGraphComponent(content);
+    if (!comp) continue;
+    if (comp.interfaceFields.length === 0) continue;
+    if (seen.has(comp.name)) continue;
+    seen.add(comp.name);
+    models.push({
+      name: comp.name,
+      fields: comp.interfaceFields,
+      relations: [],
+      orm: "scenegraph",
+      confidence: "regex",
+    });
   }
 
   return models;

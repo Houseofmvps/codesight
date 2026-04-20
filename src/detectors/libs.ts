@@ -4,6 +4,8 @@ import { extractDartExports } from "../ast/extract-dart.js";
 import { extractSwiftExports } from "../ast/extract-swift.js";
 import { extractCSharpExports } from "../ast/extract-csharp.js";
 import { extractPhpExports } from "../ast/extract-php.js";
+import { extractBrightScriptFunctions } from "../ast/extract-brightscript.js";
+import { extractBrighterScriptExports } from "../ast/extract-brighterscript.js";
 import type { LibExport, ExportItem, ProjectInfo } from "../types.js";
 
 const SKIP_DIRS = [
@@ -26,16 +28,25 @@ export async function detectLibs(
 ): Promise<LibExport[]> {
   const libFiles = files.filter((f) => {
     const ext = extname(f);
-    if (![".ts", ".js", ".mjs", ".py", ".go", ".dart", ".swift", ".cs", ".php"].includes(ext)) return false;
+    if (![".ts", ".js", ".mjs", ".py", ".go", ".dart", ".swift", ".cs", ".php", ".brs", ".bs"].includes(ext)) return false;
     if (f.endsWith(".test.ts") || f.endsWith(".spec.ts")) return false;
     if (f.endsWith(".test.js") || f.endsWith(".spec.js")) return false;
     if (f.endsWith(".d.ts")) return false;
     if (f.endsWith("_test.py") || f.endsWith("_test.go")) return false;
     if (f.endsWith("_test.dart") || f.endsWith(".g.dart")) return false;
     if (f.endsWith("Tests.swift") || f.endsWith("_test.swift")) return false;
+    // Check dir-based skips on the project-relative path, not the absolute
+    // one — otherwise a project that happens to live under a parent `tests/`
+    // dir (e.g. test fixtures) has all its lib files silently dropped.
+    const relForFilter = "/" + relative(project.root, f).replace(/\\/g, "/");
+    // Roku: skip test suites + component BRS (components/ already holds view logic)
+    if (ext === ".brs" || ext === ".bs") {
+      if (/\/tests?\//i.test(relForFilter)) return false;
+      if (/\/components\//i.test(relForFilter)) return false;
+    }
     // Skip component/page/route files
     if (f.endsWith(".tsx") || f.endsWith(".jsx")) return false;
-    if (SKIP_DIRS.some((d) => f.includes(d))) return false;
+    if (SKIP_DIRS.some((d) => relForFilter.includes(d))) return false;
     return true;
   });
 
@@ -61,6 +72,10 @@ export async function detectLibs(
       exports = extractCSharpExports(content);
     } else if (ext === ".php") {
       exports = extractPhpExports(content);
+    } else if (ext === ".brs") {
+      exports = extractBrightScriptFunctions(content);
+    } else if (ext === ".bs") {
+      exports = extractBrighterScriptExports(content);
     } else {
       exports = extractTSExports(content);
     }

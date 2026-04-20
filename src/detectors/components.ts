@@ -89,6 +89,8 @@ export async function detectComponents(
       return detectComposeComponentsFromFiles(files, project);
     case "angular":
       return detectAngularComponents(files, project);
+    case "scenegraph":
+      return detectSceneGraphComponents(files, project);
     default: {
       // SwiftUI: no componentFramework flag — detect if swiftui/vapor framework present
       if (
@@ -480,6 +482,43 @@ async function detectSwiftUIComponents(
     if (!content.includes(": View") && !content.includes(":View")) continue;
     const rel = relative(project.root, file);
     components.push(...extractSwiftUIViews(rel, content));
+  }
+
+  return components;
+}
+
+// --- SceneGraph (Roku) ---
+//
+// Every `.xml` file whose root is a `<component name="..." extends="...">`
+// element is a SceneGraph component. Props = `<field>` ids declared under
+// `<interface>`. The paired `.brs`/`.bs` lives alongside; we don't need to
+// read it for component metadata.
+async function detectSceneGraphComponents(
+  files: string[],
+  project: ProjectInfo
+): Promise<ComponentInfo[]> {
+  const { extractSceneGraphComponent, isSceneGraphXml } = await import("../ast/extract-scenegraph.js");
+  const xmlFiles = files.filter((f) => f.endsWith(".xml"));
+  const components: ComponentInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const file of xmlFiles) {
+    const content = await readFileSafe(file);
+    if (!content || !isSceneGraphXml(content)) continue;
+    const comp = extractSceneGraphComponent(content);
+    if (!comp) continue;
+    if (seen.has(comp.name)) continue;
+    seen.add(comp.name);
+
+    const rel = relative(project.root, file).replace(/\\/g, "/");
+    components.push({
+      name: comp.name,
+      file: rel,
+      confidence: "regex",
+      props: comp.interfaceFields.map((f) => f.name),
+      isClient: true,
+      isServer: false,
+    });
   }
 
   return components;

@@ -10,7 +10,7 @@ export async function detectDependencyGraph(
   const importCount = new Map<string, number>();
 
   const codeFiles = files.filter((f) =>
-    f.match(/\.(ts|tsx|js|jsx|mjs|py|go|rb|ex|exs|java|kt|rs|php)$/)
+    f.match(/\.(ts|tsx|js|jsx|mjs|py|go|rb|ex|exs|java|kt|rs|php|brs|bs|xml)$/)
   );
 
   // Build a lookup map for faster resolution: relative path -> true
@@ -41,6 +41,14 @@ export async function detectDependencyGraph(
       extractJavaImports(content, rel, edges, importCount, relPaths);
     } else if (ext === ".rs") {
       extractRustImports(content, rel, edges, importCount);
+    } else if (ext === ".brs") {
+      // BrightScript has no top-level imports; dependency edges come from the
+      // paired XML via <script uri="pkg:/..." />. Skip here — XML branch picks
+      // up the inbound edges for this file.
+    } else if (ext === ".bs") {
+      extractBrighterScriptImportsInline(content, rel, edges, importCount, relPathSet);
+    } else if (ext === ".xml") {
+      extractSceneGraphImportsInline(content, rel, edges, importCount, relPathSet);
     } else {
       extractTSImports(content, rel, file, project, relPathSet, edges, importCount);
     }
@@ -234,5 +242,74 @@ function normalizeImportPath(
     if (relPathSet.has(importPath + "/index" + ext)) return importPath + "/index" + ext;
   }
 
+  return null;
+}
+
+// ─── Roku SceneGraph imports ──────────────────────────────────────────────────
+//
+// Roku dependency edges come from two places:
+//   - <script uri="pkg:/source/utils/Utils.brs" /> in component XML
+//   - `import "pkg:/source/utils/Utils.brs"` in BrighterScript (.bs) files
+// Both forms use the `pkg:/` protocol. The root depends on the channel layout;
+// common conventions put BRS files directly under the channel root or under
+// a creator dir (src/apps/<creator>/). We normalize by stripping `pkg:/` and
+// matching against any file whose relative path ends with the import target.
+
+function extractSceneGraphImportsInline(
+  content: string,
+  rel: string,
+  edges: ImportEdge[],
+  importCount: Map<string, number>,
+  relPathSet: Set<string>
+): void {
+  // Only SceneGraph XML declares script includes — bail early on non-SceneGraph XML
+  if (!/<component\b/i.test(content) && !/<script\b/i.test(content)) return;
+  const pattern = /<script\s+[^>]*\buri\s*=\s*["']([^"']+)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(content)) !== null) {
+    const target = resolveRokuImport(m[1], relPathSet);
+    if (target && target !== rel) {
+      edges.push({ from: rel, to: target });
+      importCount.set(target, (importCount.get(target) || 0) + 1);
+    }
+  }
+}
+
+function extractBrighterScriptImportsInline(
+  content: string,
+  rel: string,
+  edges: ImportEdge[],
+  importCount: Map<string, number>,
+  relPathSet: Set<string>
+): void {
+  const pattern = /^\s*import\s+["']([^"']+)["']/gim;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(content)) !== null) {
+    const target = resolveRokuImport(m[1], relPathSet);
+    if (target && target !== rel) {
+      edges.push({ from: rel, to: target });
+      importCount.set(target, (importCount.get(target) || 0) + 1);
+    }
+  }
+}
+
+/**
+ * Roku packaging flattens files under a channel root, then exposes them via
+ * `pkg:/...` URIs. The same file might live at `src/apps/foo/source/Bar.brs`
+ * in the repo. Strip the protocol and match against any known rel path that
+ * ends with the target suffix.
+ */
+function resolveRokuImport(uri: string, relPathSet: Set<string>): string | null {
+  const stripped = uri.replace(/^pkg:\/+/, "").replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!stripped) return null;
+  // Exact match first (flat layout)
+  if (relPathSet.has(stripped)) return stripped;
+  // Suffix match — handles nested channel layouts like src/apps/<creator>/
+  for (const candidate of relPathSet) {
+    const normalized = candidate.replace(/\\/g, "/");
+    if (normalized.endsWith("/" + stripped) || normalized === stripped) {
+      return candidate;
+    }
+  }
   return null;
 }

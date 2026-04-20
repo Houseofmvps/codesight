@@ -164,5 +164,54 @@ export async function detectMiddleware(
     }
   }
 
+  // ─── Roku SceneGraph middleware ─────────────────────────────────────────
+  //
+  // SceneGraph doesn't have HTTP-style middleware, but the closest analog is:
+  //   - cross-component observers: `m.top.observeField("x", handler)` and
+  //     `m.global.AddField(...)` set up app-wide reactive bindings.
+  //   - Bugsnag + Rudderstack telemetry tasks are wired at scene boot, acting
+  //     as logging/error-handler middleware for the whole app.
+  if (project.frameworks.includes("roku-scenegraph")) {
+    const { extractBrightScriptObservers, extractBrightScriptGlobalFields } =
+      await import("../ast/extract-brightscript.js");
+    const brsFiles = files.filter((f) => f.endsWith(".brs") || f.endsWith(".bs"));
+
+    for (const file of brsFiles) {
+      const content = await readFileSafe(file);
+      if (!content) continue;
+      const rel = relative(project.root, file).replace(/\\/g, "/");
+
+      for (const obs of extractBrightScriptObservers(content)) {
+        const name = `observeField(${obs.field}) -> ${obs.handler}`;
+        if (middleware.some((m) => m.name === name && m.file === rel)) continue;
+        middleware.push({
+          name,
+          file: rel,
+          type: obs.scope === "global" ? "custom" : "custom",
+        });
+      }
+
+      for (const gf of extractBrightScriptGlobalFields(content)) {
+        const name = `m.global.${gf.name}: ${gf.type}`;
+        if (middleware.some((m) => m.name === name)) continue;
+        middleware.push({ name, file: rel, type: "custom" });
+      }
+
+      // Bugsnag + Rudderstack are logging-layer middleware in Roku apps
+      if (/bugsnag/i.test(content) && /\bBugsnagTask\b/.test(content)) {
+        const name = "BugsnagTask";
+        if (!middleware.some((m) => m.name === name)) {
+          middleware.push({ name, file: rel, type: "error-handler" });
+        }
+      }
+      if (/RudderstackTask/.test(content)) {
+        const name = "RudderstackTask";
+        if (!middleware.some((m) => m.name === name)) {
+          middleware.push({ name, file: rel, type: "logging" });
+        }
+      }
+    }
+  }
+
   return middleware;
 }

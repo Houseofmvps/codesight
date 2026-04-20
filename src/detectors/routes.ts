@@ -138,6 +138,9 @@ export async function detectRoutes(
       case "angular":
         routes.push(...(await detectAngularRoutes(files, project)));
         break;
+      case "roku-scenegraph":
+        routes.push(...(await detectRokuScreens(files, project)));
+        break;
     }
   }
 
@@ -1585,6 +1588,105 @@ async function detectAngularRoutes(
         framework: "angular",
         confidence: "regex",
       });
+    }
+  }
+
+  return routes;
+}
+
+// ─── Roku SceneGraph: screen navigation ───────────────────────────────────────
+//
+// Roku apps are client-side, so "routes" map to screens the user can navigate
+// to rather than HTTP endpoints. We key off MainScene.xml + MainScene.brs:
+//   - MainScene.xml declares `<children><HomeView id="homeView"/></children>`
+//   - MainScene.brs does `m.homeView = m.top.findNode("homeView")`
+//   - Then `ShowScreen(m.homeView, true)` opens it (modal when 2nd arg true).
+//
+// Each ShowScreen call-site becomes one RouteInfo with method="VIEW" or
+// "MODAL", path="/<id>", and file pointing at the XML that implements the
+// screen. We also fall back to any Scene-extending XML (a multi-scene app).
+
+async function detectRokuScreens(
+  files: string[],
+  project: ProjectInfo
+): Promise<RouteInfo[]> {
+  const { extractSceneGraphComponent, extractMainSceneScreens, isSceneGraphXml } =
+    await import("../ast/extract-scenegraph.js");
+  const { extractBrightScriptShowScreenCalls, extractFindNodeBindings } =
+    await import("../ast/extract-brightscript.js");
+
+  const xmlFiles = files.filter((f) => f.endsWith(".xml"));
+  const brsFiles = files.filter((f) => f.endsWith(".brs") || f.endsWith(".bs"));
+
+  // Build a map of SceneGraph component name -> relative XML file path.
+  // Used to resolve child ids (e.g. "homeView" slot) to the XML that
+  // implements the view (e.g. `views/HomeView.xml`).
+  const componentToFile = new Map<string, string>();
+  const sceneXmls: { file: string; content: string; name: string }[] = [];
+
+  for (const file of xmlFiles) {
+    const content = await readFileSafe(file);
+    if (!content || !isSceneGraphXml(content)) continue;
+    const comp = extractSceneGraphComponent(content);
+    if (!comp) continue;
+    const rel = relative(project.root, file).replace(/\\/g, "/");
+    componentToFile.set(comp.name, rel);
+    if (comp.extendsType.toLowerCase() === "scene" || comp.name.toLowerCase().endsWith("scene")) {
+      sceneXmls.push({ file: rel, content, name: comp.name });
+    }
+  }
+
+  const routes: RouteInfo[] = [];
+  const seen = new Set<string>();
+
+  for (const scene of sceneXmls) {
+    const slotToType = extractMainSceneScreens(scene.content);
+
+    // Find the paired .brs/.bs — same directory + same stem.
+    const stem = scene.file.replace(/\.xml$/i, "");
+    const pairedBrs = brsFiles.find((f) => {
+      const rel = relative(project.root, f).replace(/\\/g, "/").replace(/\.(brs|bs)$/i, "");
+      return rel === stem;
+    });
+
+    // ShowScreen / CloseScreen / GetCurrentScreen call-sites across the scene
+    // BRS plus any other BRS that references the scene's slots. Most apps
+    // invoke these from the scene itself, but helpers in source/ can too.
+    const brsSources: { file: string; content: string }[] = [];
+    if (pairedBrs) {
+      const pc = await readFileSafe(pairedBrs);
+      if (pc) brsSources.push({ file: pairedBrs, content: pc });
+    }
+
+    // Build slot-variable lookup from the paired BRS:
+    //   m.homeView = m.top.findNode("homeView")  => { "m.homeView": "homeView" }
+    const varToSlot: Record<string, string> = {};
+    for (const src of brsSources) {
+      Object.assign(varToSlot, extractFindNodeBindings(src.content));
+    }
+
+    for (const src of brsSources) {
+      const calls = extractBrightScriptShowScreenCalls(src.content);
+      const tags = detectTags(src.content);
+      for (const call of calls) {
+        if (call.helper !== "show") continue;
+        const slot = varToSlot[call.target] ?? call.target.replace(/^m\./, "");
+        const componentType = slotToType[slot];
+        const routeFile = componentType ? (componentToFile.get(componentType) ?? scene.file) : scene.file;
+        const method = call.modal ? "MODAL" : "VIEW";
+        const path = `/${slot}`;
+        const key = `${method}:${path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        routes.push({
+          method,
+          path,
+          file: routeFile,
+          tags,
+          framework: "roku-scenegraph",
+          confidence: "regex",
+        });
+      }
     }
   }
 

@@ -15,7 +15,7 @@ export async function detectEvents(
   const events: EventInfo[] = [];
 
   const relevantFiles = files.filter(
-    (f) => /\.(ts|tsx|js|jsx|mjs|py|rb|ex|exs)$/.test(f) && !f.includes("node_modules")
+    (f) => /\.(ts|tsx|js|jsx|mjs|py|rb|ex|exs|brs|bs)$/.test(f) && !f.includes("node_modules")
   );
 
   for (const file of relevantFiles) {
@@ -112,6 +112,33 @@ export async function detectEvents(
           name: m[1],
           type: "channel",
           system: "redis-pub-sub",
+          file: rel,
+        });
+      }
+    }
+
+    // Roku SceneGraph: observeField subscriptions + RudderstackTask events.
+    // Every observed field is a reactive-style event bus inside the scene
+    // graph; Rudderstack events are the analytics topic stream for the app.
+    if (file.endsWith(".brs") || file.endsWith(".bs")) {
+      const { extractBrightScriptObservers, extractBrightScriptRudderstackEvents } =
+        await import("../ast/extract-brightscript.js");
+
+      for (const obs of extractBrightScriptObservers(content)) {
+        events.push({
+          name: obs.field,
+          type: "event",
+          system: "scenegraph-observer",
+          file: rel,
+          payloadType: obs.scope === "global" ? "m.global" : "node-field",
+        });
+      }
+
+      for (const evt of extractBrightScriptRudderstackEvents(content)) {
+        events.push({
+          name: evt.name,
+          type: "topic",
+          system: "rudderstack",
           file: rel,
         });
       }
