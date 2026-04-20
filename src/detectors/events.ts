@@ -90,14 +90,23 @@ export async function detectEvents(
       }
     }
 
-    // Python Celery: @app.task / @shared_task + apply_async('task-name')
+    // Python Celery task definitions
     if (file.endsWith(".py") && (content.includes("celery") || content.includes("Celery"))) {
-      const celeryTaskPat = /@(?:app\.task|shared_task|celery\.task)[\s\S]{0,100}def\s+(\w+)/g;
-      while ((m = celeryTaskPat.exec(content)) !== null) {
+      const moduleName = rel.endsWith("/__init__.py")
+        ? rel.slice(0, -"/__init__.py".length).replace(/\//g, ".")
+        : rel.replace(/\.py$/, "").replace(/\//g, ".");
+      const celeryTaskPat =
+        /@(?:(?:\w+)\.task|shared_task)\s*(?:\(([\s\S]{0,300}?)\))?\s*\n\s*def\s+(\w+)/g;
+      let celeryMatch: RegExpExecArray | null;
+
+      while ((celeryMatch = celeryTaskPat.exec(content)) !== null) {
+        const decoratorArgs = celeryMatch[1] || "";
+        const functionName = celeryMatch[2];
+        const explicitName = decoratorArgs.match(/\bname\s*=\s*["']([^"']+)["']/)?.[1];
         events.push({
-          name: m[1],
+          name: explicitName || `${moduleName}.${functionName}`,
           type: "queue",
-          system: "bullmq", // map to closest JS equivalent concept for display
+          system: "celery",
           file: rel,
           payloadType: "celery-task",
         });

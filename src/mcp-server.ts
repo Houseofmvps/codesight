@@ -357,7 +357,7 @@ async function toolGetEvents(args: any): Promise<string> {
   const result = await getScanResult(args.directory);
   const events = result.events;
   if (!events || events.length === 0) {
-    return "No async events or queues detected. Events are auto-detected from BullMQ, Kafka, Redis pub/sub, Socket.io, and EventEmitter usage.";
+    return "No async events or queues detected. Events are auto-detected from BullMQ, Celery, Kafka, Redis pub/sub, Socket.io, and EventEmitter usage.";
   }
 
   let filtered = events;
@@ -593,7 +593,7 @@ const TOOLS = [
       type: "object",
       properties: {
         directory: { type: "string", description: "Directory (defaults to cwd)" },
-        system: { type: "string", description: "Filter by system: bullmq | kafka | redis-pub-sub | socket.io | eventemitter" },
+        system: { type: "string", description: "Filter by system: bullmq | celery | kafka | redis-pub-sub | socket.io | eventemitter" },
       },
     },
     handler: toolGetEvents,

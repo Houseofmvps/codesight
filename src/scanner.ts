@@ -268,7 +268,7 @@ export async function detectProject(root: string): Promise<ProjectInfo> {
     const FW_LANG: Partial<Record<string, string>> = {
       vapor: "swift", swiftui: "swift",
       flutter: "dart",
-      django: "python", flask: "python", fastapi: "python",
+      django: "python", flask: "python", fastapi: "python", celery: "python",
       rails: "ruby",
       phoenix: "elixir",
       spring: "java",
@@ -513,6 +513,7 @@ async function detectFrameworks(
   if (pyDeps.includes("flask")) frameworks.push("flask");
   if (pyDeps.includes("fastapi")) frameworks.push("fastapi");
   if (pyDeps.includes("django")) frameworks.push("django");
+  if (pyDeps.includes("celery")) frameworks.push("celery");
 
   // Go frameworks — require both go.mod dep AND actual import in .go source files.
   // A dep in go.mod may be transitive or used only for utilities (e.g. go-chi/cors
@@ -963,6 +964,7 @@ async function detectNonJSWorkspace(
       frameworks.push("django");
       orms.push("django");
     }
+    if (pyDeps.includes("celery")) frameworks.push("celery");
   } catch {}
 
   // Elixir / Phoenix / Ecto (workspace-level; mirrors existing root-level detection)

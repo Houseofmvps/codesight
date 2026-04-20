@@ -65,6 +65,53 @@ export async function loadConfig(root: string): Promise<CodesightConfig> {
   return {};
 }
 
+function safeParseConfigText(content: string): CodesightConfig {
+  const config: CodesightConfig = {};
+  const match = content.match(/export\s+default\s+(\{[\s\S]*\})\s*;?\s*$/m);
+  if (!match) return config;
+  const body = match[1];
+
+  function extractString(field: string): string | undefined {
+    const m = body.match(new RegExp(`\\b${field}\\s*:\\s*['"\`]([^'"\`]*?)['"\`]`));
+    return m ? m[1] : undefined;
+  }
+  function extractNumber(field: string): number | undefined {
+    const m = body.match(new RegExp(`\\b${field}\\s*:\\s*(\\d+)`));
+    return m ? parseInt(m[1], 10) : undefined;
+  }
+  function extractBoolean(field: string): boolean | undefined {
+    const m = body.match(new RegExp(`\\b${field}\\s*:\\s*(true|false)`));
+    return m ? m[1] === "true" : undefined;
+  }
+  function extractStringArray(field: string): string[] | undefined {
+    const m = body.match(new RegExp(`\\b${field}\\s*:\\s*\\[([^\\]]*?)\\]`));
+    if (!m) return undefined;
+    const items = m[1].match(/['"`]([^'"`]*?)['"`]/g);
+    return items ? items.map((s) => s.slice(1, -1)) : [];
+  }
+
+  const maxDepth = extractNumber("maxDepth");
+  if (maxDepth !== undefined) config.maxDepth = maxDepth;
+  const outputDir = extractString("outputDir");
+  if (outputDir !== undefined) config.outputDir = outputDir;
+  const profile = extractString("profile");
+  if (profile !== undefined) config.profile = profile as CodesightConfig["profile"];
+  const blastRadiusDepth = extractNumber("blastRadiusDepth");
+  if (blastRadiusDepth !== undefined) config.blastRadiusDepth = blastRadiusDepth;
+  const hotFileThreshold = extractNumber("hotFileThreshold");
+  if (hotFileThreshold !== undefined) config.hotFileThreshold = hotFileThreshold;
+  const maxTokens = extractNumber("maxTokens");
+  if (maxTokens !== undefined) config.maxTokens = maxTokens;
+  const collapseCrud = extractBoolean("collapseCrud");
+  if (collapseCrud !== undefined) config.collapseCrud = collapseCrud;
+  const disableDetectors = extractStringArray("disableDetectors");
+  if (disableDetectors !== undefined) config.disableDetectors = disableDetectors;
+  const ignorePatterns = extractStringArray("ignorePatterns");
+  if (ignorePatterns !== undefined) config.ignorePatterns = ignorePatterns;
+
+  return config;
+}
+
 async function loadTsConfig(configPath: string, _root: string): Promise<CodesightConfig> {
   // Strategy 1: try tsx via dynamic import of the .ts file directly
   // (works if tsx or ts-node is installed)
@@ -73,22 +120,15 @@ async function loadTsConfig(configPath: string, _root: string): Promise<Codesigh
     return (module.default || module) as CodesightConfig;
   } catch {}
 
-  // Strategy 2: read as text and extract JSON-like config
-  // (fallback for when no TS loader is available)
+  // Strategy 2: read as text and extract known fields with safe regex parsing
+  // (fallback for when no TS loader is available — avoids dynamic code execution)
   const content = await readFile(configPath, "utf-8");
+  const parsed = safeParseConfigText(content);
+  if (Object.keys(parsed).length > 0) return parsed;
 
-  // Try to extract the config object from simple export default { ... }
-  const match = content.match(/export\s+default\s+({[\s\S]*})\s*;?\s*$/m);
-  if (match) {
-    try {
-      // Use Function constructor to evaluate the object literal
-      // Safe here since this is user's own config file in their project
-      const fn = new Function(`return (${match[1]})`);
-      return fn() as CodesightConfig;
-    } catch {}
-  }
-
-  console.warn(`  Warning: cannot load codesight.config.ts (install tsx for TS config support)`);
+  console.warn(
+    `  Warning: cannot load codesight.config.ts (install tsx for full TS config support, or use codesight.config.json)`
+  );
   return {};
 }
 

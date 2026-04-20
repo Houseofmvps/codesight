@@ -22,12 +22,13 @@ async function loadModules() {
   const { collectFiles, detectProject } = await import("../dist/scanner.js");
   const { detectRoutes } = await import("../dist/detectors/routes.js");
   const { detectSchemas } = await import("../dist/detectors/schema.js");
+  const { detectEvents } = await import("../dist/detectors/events.js");
   const { detectComponents } = await import("../dist/detectors/components.js");
   const { detectDependencyGraph } = await import("../dist/detectors/graph.js");
   const { detectMiddleware } = await import("../dist/detectors/middleware.js");
   const { detectConfig } = await import("../dist/detectors/config.js");
   const { detectLibs } = await import("../dist/detectors/libs.js");
-  return { collectFiles, detectProject, detectRoutes, detectSchemas, detectComponents, detectDependencyGraph, detectMiddleware, detectConfig, detectLibs };
+  return { collectFiles, detectProject, detectRoutes, detectSchemas, detectEvents, detectComponents, detectDependencyGraph, detectMiddleware, detectConfig, detectLibs };
 }
 
 async function assertFastApiSqlAlchemyDetection(mods: any, dir: string, workspacePath: string, forbiddenWorkspacePaths: string[] = []) {
@@ -513,6 +514,36 @@ describe("Framework Detection", async () => {
     assert.ok(project.frameworks.includes("elysia"));
   });
 
+  it("detects Celery framework from requirements.txt", async () => {
+    const dir = await writeFixture("celery-detect", {
+      "requirements.txt": "celery\nredis\n",
+      "tasks.py": `from celery import Celery
+app = Celery("worker")
+
+@app.task
+def ping():
+    return "pong"
+`,
+    });
+    const project = await mods.detectProject(dir);
+    assert.ok(project.frameworks.includes("celery"));
+    assert.equal(project.language, "python");
+  });
+
+  it("detects Celery framework from pyproject.toml", async () => {
+    const dir = await writeFixture("celery-pyproject-detect", {
+      "pyproject.toml": `[project]
+name = "celery-worker"
+dependencies = [
+  "celery>=5.4.0",
+  "redis>=5.0.0",
+]
+`,
+    });
+    const project = await mods.detectProject(dir);
+    assert.ok(project.frameworks.includes("celery"));
+  });
+
   it("detects monorepo", async () => {
     const dir = await writeFixture("monorepo-detect", {
       "package.json": JSON.stringify({ name: "test", workspaces: ["packages/*"] }),
@@ -525,6 +556,39 @@ describe("Framework Detection", async () => {
     assert.ok(project.workspaces.length >= 2);
     assert.ok(project.frameworks.includes("hono"));
     assert.equal(project.componentFramework, "react");
+  });
+});
+
+describe("Event Detection", async () => {
+  const mods = await loadModules();
+
+  it("detects Celery task definitions", async () => {
+    const dir = await writeFixture("celery-events", {
+      "requirements.txt": "celery\n",
+      "tasks.py": `from celery import Celery, shared_task
+app = Celery("worker")
+
+@app.task
+def add(x, y):
+    return x + y
+
+@shared_task
+def cleanup():
+    return True
+
+@app.task(bind=True, name="billing.report_usage_to_stripe", max_retries=3)
+def report_usage_to_stripe_task(self):
+    return None
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    const files = await mods.collectFiles(dir);
+    const events = await mods.detectEvents(files, project);
+
+    assert.ok(events.some((e: any) => e.system === "celery" && e.name === "tasks.add" && e.payloadType === "celery-task"));
+    assert.ok(events.some((e: any) => e.system === "celery" && e.name === "tasks.cleanup" && e.payloadType === "celery-task"));
+    assert.ok(events.some((e: any) => e.system === "celery" && e.name === "billing.report_usage_to_stripe" && e.payloadType === "celery-task"));
   });
 });
 
@@ -746,6 +810,27 @@ class Post(Base):
     });
 
     await assertFastApiSqlAlchemyDetection(mods, dir, "container-dir/custom-python-backend", ["container-dir"]);
+  });
+
+  it("detects Celery in a custom-named services workspace", async () => {
+    const dir = await writeFixture("python-celery-workspace", {
+      "package.json": JSON.stringify({ name: "test", workspaces: ["apps/*", "services/*"] }),
+      "apps/web/package.json": JSON.stringify({ name: "@test/web", dependencies: { react: "^18.0.0" } }),
+      "services/worker-service/requirements.txt": "celery\nredis\n",
+      "services/worker-service/tasks.py": `from celery import Celery
+app = Celery("worker")
+
+@app.task
+def sync_users():
+    return True
+`,
+    });
+
+    const project = await mods.detectProject(dir);
+    const workspace = project.workspaces.find((w: any) => w.path === "services/worker-service");
+    assert.ok(project.frameworks.includes("celery"), `Expected celery in frameworks, got ${project.frameworks.join(", ")}`);
+    assert.ok(workspace, `Expected workspace services/worker-service, got ${project.workspaces.map((w: any) => w.path).join(", ")}`);
+    assert.ok(workspace.frameworks.includes("celery"), `Expected celery in workspace frameworks, got ${workspace.frameworks.join(", ")}`);
   });
 });
 
