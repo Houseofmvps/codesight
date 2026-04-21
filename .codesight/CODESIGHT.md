@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | typescript
 
-> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 40 lib files | 6 env vars | 5 middleware | 6 events | 60% test coverage
-> **Token savings:** this file is ~3,500 tokens. Without it, AI exploration would cost ~25,900 tokens. **Saves ~22,400 tokens per conversation.**
-> **Last scanned:** 2026-04-18 14:40 — re-run after significant changes
+> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 43 lib files | 6 env vars | 5 middleware | 6 events | 60% test coverage
+> **Token savings:** this file is ~3,800 tokens. Without it, AI exploration would cost ~26,700 tokens. **Saves ~22,900 tokens per conversation.**
+> **Last scanned:** 2026-04-21 09:37 — re-run after significant changes
 
 ---
 
@@ -36,6 +36,15 @@
   - function extractComposeComponents: (filePath, content) => ComponentInfo[]
   - function extractNavigationRoutes: (filePath, content) => RouteInfo[]
   - function extractActivitiesFromManifest: (filePath, content) => RouteInfo[]
+- `src/ast/extract-brighterscript.ts` — function extractBrighterScriptImports: (content) => string[], function extractBrighterScriptExports: (content) => ExportItem[]
+- `src/ast/extract-brightscript.ts`
+  - function extractBrightScriptFunctions: (content) => ExportItem[]
+  - function extractBrightScriptObservers: (content) => BrightScriptObserver[]
+  - function extractBrightScriptNavigationCalls: (content, helperNames) => ShowScreenCall[]
+  - function extractBrightScriptShowScreenCalls: (content) => ShowScreenCall[]
+  - function extractBrightScriptGraphqlCalls: (content) => GraphqlCallSite[]
+  - function extractBrightScriptGlobalFields: (content) => GlobalFieldRegistration[]
+  - _...7 more_
 - `src/ast/extract-components.ts`
   - function extractReactComponentsAST: (ts, filePath, content, relPath) => ComponentInfo[]
   - function ComponentName: (...) => void
@@ -64,6 +73,11 @@
   - function extractSQLModelAST: (filePath, content) => Promise<SchemaModel[] | null>
   - function isPythonAvailable: () => Promise<boolean>
 - `src/ast/extract-routes.ts` — function extractRoutesAST: (ts, filePath, content, framework, tags) => RouteInfo[]
+- `src/ast/extract-scenegraph.ts`
+  - function extractSceneGraphComponent: (content) => SceneGraphComponent | null
+  - function extractMainSceneScreens: (content) => Record<string, string>
+  - function isSceneGraphXml: (content) => boolean
+  - interface SceneGraphComponent
 - `src/ast/extract-schema.ts` — function extractDrizzleSchemaAST: (ts, filePath, content) => SchemaModel[], function extractTypeORMSchemaAST: (ts, filePath, content) => SchemaModel[]
 - `src/ast/extract-swift.ts`
   - function extractVaporRoutes: (filePath, content, tags) => RouteInfo[]
@@ -135,7 +149,7 @@
   - function hashFileContent: (content) => string
   - function collectFiles: (root, maxDepth, ignorePatterns) => Promise<string[]>
   - function readFileSafe: (path) => Promise<string>
-  - _...2 more_
+  - _...5 more_
 - `src/telemetry.ts`
   - function runTelemetry: (root, result, outputDir) => Promise<TelemetryReport>
   - interface TelemetryTask
@@ -178,9 +192,10 @@
 
 ## Most Imported Files (change these carefully)
 
-- `src/types.ts` — imported by **41** files
+- `src/types.ts` — imported by **44** files
 - `src/scanner.ts` — imported by **16** files
 - `src/ast/loader.ts` — imported by **6** files
+- `src/ast/extract-brightscript.ts` — imported by **5** files
 - `src/detectors/routes.ts` — imported by **3** files
 - `src/detectors/schema.ts` — imported by **3** files
 - `src/detectors/components.ts` — imported by **3** files
@@ -190,27 +205,26 @@
 - `src/ast/extract-dart.ts` — imported by **3** files
 - `src/ast/extract-swift.ts` — imported by **3** files
 - `src/ast/extract-android.ts` — imported by **3** files
+- `src/ast/extract-scenegraph.ts` — imported by **3** files
 - `src/ast/extract-csharp.ts` — imported by **3** files
 - `src/ast/extract-php.ts` — imported by **3** files
 - `src/generators/ai-config.ts` — imported by **3** files
 - `src/core.ts` — imported by **3** files
 - `src/monorepo/discover.ts` — imported by **3** files
 - `tests/fixtures/graph-app/src/db.ts` — imported by **3** files
-- `src/detectors/libs.ts` — imported by **2** files
-- `src/detectors/graph.ts` — imported by **2** files
 
 ## Import Map (who imports what)
 
-- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts`, `src/ast/extract-dart.ts`, `src/ast/extract-go.ts` +36 more
+- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-brighterscript.ts`, `src/ast/extract-brightscript.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts` +39 more
 - `src/scanner.ts` ← `src/core.ts`, `src/detectors/components.ts`, `src/detectors/config.ts`, `src/detectors/contracts.ts`, `src/detectors/coverage.ts` +11 more
 - `src/ast/loader.ts` ← `src/ast/extract-components.ts`, `src/ast/extract-routes.ts`, `src/ast/extract-schema.ts`, `src/detectors/components.ts`, `src/detectors/routes.ts` +1 more
+- `src/ast/extract-brightscript.ts` ← `src/ast/extract-brighterscript.ts`, `src/detectors/events.ts`, `src/detectors/libs.ts`, `src/detectors/middleware.ts`, `src/detectors/routes.ts`
 - `src/detectors/routes.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/schema.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/components.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/config.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/middleware.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/formatter.ts` ← `src/core.ts`, `src/index.ts`, `src/mcp-server.ts`
-- `src/ast/extract-dart.ts` ← `src/detectors/components.ts`, `src/detectors/libs.ts`, `src/detectors/routes.ts`
 
 ---
 

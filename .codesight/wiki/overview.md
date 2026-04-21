@@ -6,7 +6,7 @@
 
 ## Scale
 
-8 API routes · 40 library files · 5 middleware layers · 6 environment variables
+8 API routes · 43 library files · 5 middleware layers · 6 environment variables
 
 ## Subsystems
 
@@ -16,18 +16,18 @@
 - **[Infra](./infra.md)** — 1 routes — touches: auth, db, cache, queue, payment
 - **[Api](./api.md)** — 1 routes — touches: auth, db, cache, queue, email
 
-**Libraries:** 40 files — see [libraries.md](./libraries.md)
+**Libraries:** 43 files — see [libraries.md](./libraries.md)
 
 ## High-Impact Files
 
 Changes to these files have the widest blast radius across the codebase:
 
-- `src/types.ts` — imported by **41** files
+- `src/types.ts` — imported by **44** files
 - `src/scanner.ts` — imported by **16** files
 - `src/ast/loader.ts` — imported by **6** files
+- `src/ast/extract-brightscript.ts` — imported by **5** files
 - `src/detectors/routes.ts` — imported by **3** files
 - `src/detectors/schema.ts` — imported by **3** files
-- `src/detectors/components.ts` — imported by **3** files
 
 ## Required Environment Variables
 
@@ -38,4 +38,4 @@ Changes to these files have the widest blast radius across the codebase:
 - `VITE_VAR_NAME` — `src/detectors/config.ts`
 
 ---
-_Back to [index.md](./index.md) · Generated 2026-04-18_
+_Back to [index.md](./index.md) · Generated 2026-04-21_

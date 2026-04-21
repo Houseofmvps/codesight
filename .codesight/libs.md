@@ -6,6 +6,15 @@
   - function extractComposeComponents: (filePath, content) => ComponentInfo[]
   - function extractNavigationRoutes: (filePath, content) => RouteInfo[]
   - function extractActivitiesFromManifest: (filePath, content) => RouteInfo[]
+- `src/ast/extract-brighterscript.ts` — function extractBrighterScriptImports: (content) => string[], function extractBrighterScriptExports: (content) => ExportItem[]
+- `src/ast/extract-brightscript.ts`
+  - function extractBrightScriptFunctions: (content) => ExportItem[]
+  - function extractBrightScriptObservers: (content) => BrightScriptObserver[]
+  - function extractBrightScriptNavigationCalls: (content, helperNames) => ShowScreenCall[]
+  - function extractBrightScriptShowScreenCalls: (content) => ShowScreenCall[]
+  - function extractBrightScriptGraphqlCalls: (content) => GraphqlCallSite[]
+  - function extractBrightScriptGlobalFields: (content) => GlobalFieldRegistration[]
+  - _...7 more_
 - `src/ast/extract-components.ts`
   - function extractReactComponentsAST: (ts, filePath, content, relPath) => ComponentInfo[]
   - function ComponentName: (...) => void
@@ -34,6 +43,11 @@
   - function extractSQLModelAST: (filePath, content) => Promise<SchemaModel[] | null>
   - function isPythonAvailable: () => Promise<boolean>
 - `src/ast/extract-routes.ts` — function extractRoutesAST: (ts, filePath, content, framework, tags) => RouteInfo[]
+- `src/ast/extract-scenegraph.ts`
+  - function extractSceneGraphComponent: (content) => SceneGraphComponent | null
+  - function extractMainSceneScreens: (content) => Record<string, string>
+  - function isSceneGraphXml: (content) => boolean
+  - interface SceneGraphComponent
 - `src/ast/extract-schema.ts` — function extractDrizzleSchemaAST: (ts, filePath, content) => SchemaModel[], function extractTypeORMSchemaAST: (ts, filePath, content) => SchemaModel[]
 - `src/ast/extract-swift.ts`
   - function extractVaporRoutes: (filePath, content, tags) => RouteInfo[]
@@ -105,7 +119,7 @@
   - function hashFileContent: (content) => string
   - function collectFiles: (root, maxDepth, ignorePatterns) => Promise<string[]>
   - function readFileSafe: (path) => Promise<string>
-  - _...2 more_
+  - _...5 more_
 - `src/telemetry.ts`
   - function runTelemetry: (root, result, outputDir) => Promise<TelemetryReport>
   - interface TelemetryTask

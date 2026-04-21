@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**40 library files** across 11 modules
+**43 library files** across 11 modules
 
 ## Detectors (15 files)
 
@@ -22,17 +22,20 @@
 - `src/detectors/knowledge.ts` — detectKnowledge
 - `src/detectors/middleware.ts` — detectMiddleware
 
-## Ast (11 files)
+## Ast (14 files)
 
+- `src/ast/extract-brightscript.ts` — extractBrightScriptFunctions, extractBrightScriptObservers, extractBrightScriptNavigationCalls, extractBrightScriptShowScreenCalls, extractBrightScriptGraphqlCalls, extractBrightScriptGlobalFields, …
 - `src/ast/loader.ts` — loadTypeScript, resetCache, parseSourceFile, getDecorators, parseDecorator, getText
 - `src/ast/extract-android.ts` — extractRetrofitRoutes, extractRoomEntities, extractComposeComponents, extractNavigationRoutes, extractActivitiesFromManifest
 - `src/ast/extract-python.ts` — extractPythonRoutesAST, extractSQLAlchemyAST, extractDjangoModelsAST, extractSQLModelAST, isPythonAvailable
 - `src/ast/extract-csharp.ts` — extractAspNetControllerRoutes, extractAspNetMinimalApiRoutes, extractEntityFrameworkModels, extractCSharpExports
+- `src/ast/extract-scenegraph.ts` — extractSceneGraphComponent, extractMainSceneScreens, isSceneGraphXml, SceneGraphComponent
 - `src/ast/extract-components.ts` — extractReactComponentsAST, ComponentName, ComponentName
 - `src/ast/extract-dart.ts` — extractFlutterRoutes, extractFlutterWidgets, extractDartExports
 - `src/ast/extract-go.ts` — extractGoRoutesStructured, extractGORMModelsStructured, extractEntSchemasStructured
 - `src/ast/extract-php.ts` — extractLaravelRoutes, extractEloquentModels, extractPhpExports
 - `src/ast/extract-swift.ts` — extractVaporRoutes, extractSwiftUIViews, extractSwiftExports
+- `src/ast/extract-brighterscript.ts` — extractBrighterScriptImports, extractBrighterScriptExports
 - `src/ast/extract-schema.ts` — extractDrizzleSchemaAST, extractTypeORMSchemaAST
 - `src/ast/extract-routes.ts` — extractRoutesAST
 
