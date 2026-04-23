@@ -4,4 +4,5 @@ dist/
 .DS_Store
 docs/superpowers/
 package-lock.json
-tests/fixtures/
+tests/fixtures/**/.codesight/
+tests/fixtures/**/CODESIGHT.md

@@ -93,6 +93,7 @@ export async function scan(
   }
 
   // Step 3b: Run plugin detectors
+  const customSections: { name: string; content: string }[] = [];
   if (userConfig.plugins) {
     for (const plugin of userConfig.plugins) {
       if (plugin.detector) {
@@ -102,6 +103,7 @@ export async function scan(
           if (pluginResult.schemas) schemas.push(...pluginResult.schemas);
           if (pluginResult.components) components.push(...pluginResult.components);
           if (pluginResult.middleware) middleware.push(...pluginResult.middleware);
+          if (pluginResult.customSections) customSections.push(...pluginResult.customSections);
         } catch (err: any) {
           if (!quiet) console.warn(`\n  Warning: plugin "${plugin.name}" failed: ${err.message}`);
         }
@@ -159,6 +161,7 @@ export async function scan(
     events: events.length > 0 ? events : undefined,
     testCoverage: testCoverage.testFiles.length > 0 ? testCoverage : undefined,
     crudGroups: crudGroups.length > 0 ? crudGroups : undefined,
+    customSections: customSections.length > 0 ? customSections : undefined,
   };
 
   const outputContent = await writeOutput(tempResult, outputDir);
