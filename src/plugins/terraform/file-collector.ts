@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, dirname, resolve, extname } from "node:path";
+import { join, resolve, extname } from "node:path";
 import type { TerraformPluginConfig } from "./types.js";
 
 const SKIP_DIRS = new Set([".terraform", ".git", "node_modules", ".terragrunt-cache"]);
@@ -12,7 +12,7 @@ export interface CollectedFiles {
 
 /**
  * Collect .tf and .tfvars files from the best-matching infrastructure location.
- * Tries: explicit config path → in-project subdirs → sibling repos → project root.
+ * Tries: explicit config path → in-project subdirs (terraform/, infra/, etc.) → project root.
  */
 export async function collectTfFiles(
   projectRoot: string,
@@ -32,15 +32,7 @@ export async function collectTfFiles(
     if (files.tfFiles.length > 0) return files;
   }
 
-  // 3. Sibling infrastructure repo
-  const parent = dirname(projectRoot);
-  for (const sibling of ["infrastructure", "infra", "terraform", "deploy"]) {
-    const candidate = join(parent, sibling);
-    const files = await scanDirForTf(candidate);
-    if (files.tfFiles.length > 0) return files;
-  }
-
-  // 4. .tf files at project root
+  // 3. .tf files at project root
   const rootFiles = await scanDirForTf(projectRoot, 1);
   if (rootFiles.tfFiles.length > 0) return rootFiles;
 

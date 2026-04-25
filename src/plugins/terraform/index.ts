@@ -12,19 +12,19 @@ export type { TerraformPluginConfig } from "./types.js";
 /**
  * Create a Terraform infrastructure plugin for codesight.
  *
- * Scans .tf files — either co-located in the project or in a separate
- * infrastructure repo — and generates an infrastructure section with
- * deployment context for AI agents.
+ * Scans .tf files co-located in the project (terraform/, infra/, etc.) and generates
+ * an infrastructure section with deployment context for AI agents.
+ * Use infraPath to point at a separate infrastructure repository.
  *
  * @example
- * // Auto-discover infrastructure
+ * // Auto-discover co-located terraform
  * createTerraformPlugin()
  *
  * @example
- * // Explicit centralised infra repo
+ * // Explicit separate infra repo
  * createTerraformPlugin({
  *   infraPath: '../infrastructure',
- *   serviceName: 'query-service',
+ *   serviceName: 'my-service',
  * })
  */
 export function createTerraformPlugin(config: TerraformPluginConfig = {}): CodesightPlugin {

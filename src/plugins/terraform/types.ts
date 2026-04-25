@@ -1,7 +1,7 @@
 /** User-facing configuration for the Terraform infrastructure plugin */
 export interface TerraformPluginConfig {
-  /** Path to infra repo — absolute or relative to project root.
-   *  Default: auto-discovers ../infrastructure, ./terraform, ./infra, ./deploy */
+  /** Path to a separate infrastructure repo — absolute or relative to project root.
+   *  Default: auto-discovers ./terraform, ./infra, ./infrastructure, ./deploy, ./iac */
   infraPath?: string;
   /** Override service name matching (default: project.name from package.json etc.) */
   serviceName?: string;
