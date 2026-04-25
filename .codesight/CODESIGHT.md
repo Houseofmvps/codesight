@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | typescript
 
-> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 43 lib files | 6 env vars | 5 middleware | 6 events | 60% test coverage
-> **Token savings:** this file is ~3,800 tokens. Without it, AI exploration would cost ~26,700 tokens. **Saves ~22,900 tokens per conversation.**
-> **Last scanned:** 2026-04-24 19:02 — re-run after significant changes
+> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 61 lib files | 5 env vars | 1 middleware | 6 events | 60% test coverage
+> **Token savings:** this file is ~4,400 tokens. Without it, AI exploration would cost ~30,200 tokens. **Saves ~25,700 tokens per conversation.**
+> **Last scanned:** 2026-04-25 11:57 — re-run after significant changes
 
 ---
 
@@ -142,6 +142,34 @@
 - `src/monorepo/discover.ts` — function discoverPackages: (root, config) => Promise<PackageInfo[]>, interface PackageInfo
 - `src/monorepo/orchestrator.ts` — function runMonorepoScan: (root, userConfig, targetPackage?) => Promise<PackageInfo[]>
 - `src/monorepo/watch.ts` — function watchMonorepo: (root, userConfig) => Promise<void>
+- `src/plugins/cicd/circleci.ts` — function extractCircleCIWorkflows: (parsed, relPath, rawContent) => CICDPipeline[]
+- `src/plugins/cicd/formatter.ts` — function formatCICD: (pipelines) => string
+- `src/plugins/cicd/github-actions.ts` — function extractGitHubActionsWorkflow: (parsed, relPath, rawContent) => CICDPipeline | null
+- `src/plugins/cicd/index.ts` — function createCICDPlugin: (config) => CodesightPlugin, interface CICDPluginConfig
+- `src/plugins/cicd/yaml-parser.ts` — function parseYAML: (text) => any, function parseFlowSequence: (s) => any[]
+- `src/plugins/githooks/formatter.ts` — function formatGitHooks: (hooks) => string
+- `src/plugins/githooks/husky.ts` — function parseHusky: (root) => Promise<GitHook[]>
+- `src/plugins/githooks/index.ts` — function createGitHooksPlugin: () => CodesightPlugin
+- `src/plugins/githooks/lefthook.ts` — function parseLefthook: (root) => Promise<GitHook[]>
+- `src/plugins/githooks/raw.ts` — function parseRawHooks: (root) => Promise<GitHook[]>
+- `src/plugins/skills/formatter.ts` — function formatSkills: (skills) => string
+- `src/plugins/skills/index.ts` — function createSkillsPlugin: () => CodesightPlugin, interface Skill
+- `src/plugins/terraform/extractor.ts` — function extractServiceInfrastructure: (matchedBlocks, allBlocks, config) => ServiceInfrastructure, function extractEnvironments: (tfvarsFiles, serviceName) => Promise<Record<string, EnvironmentOverrides>>
+- `src/plugins/terraform/file-collector.ts`
+  - function collectTfFiles: (projectRoot, config) => Promise<CollectedFiles>
+  - function readFileSafe: (path) => Promise<string>
+  - interface CollectedFiles
+- `src/plugins/terraform/formatter.ts` — function formatInfrastructure: (infra) => string
+- `src/plugins/terraform/hcl-parser.ts`
+  - function parseHclFile: (content, filePath) => HclBlock[]
+  - function parseTfvars: (content) => Record<string, string>
+  - function stripComments: (content) => string
+  - function extractBraceBlock: (content, startAfterOpenBrace) => string | null
+- `src/plugins/terraform/index.ts` — function createTerraformPlugin: (config) => CodesightPlugin
+- `src/plugins/terraform/service-matcher.ts`
+  - function matchServiceBlocks: (projectName, blocks, config) => HclBlock[]
+  - function normaliseServiceName: (name) => string
+  - interface ScoredBlock
 - `src/scanner.ts`
   - function readCodesightIgnore: (root) => Promise<string[]>
   - function loadFileHashCache: (outputDir) => Promise<FileHashCache>
@@ -161,16 +189,14 @@
 
 ## Environment Variables
 
-- `DATABASE_URL` **required** — tests/fixtures/config-app/.env.example
-- `JWT_SECRET` **required** — tests/fixtures/config-app/.env.example
-- `PORT` (has default) — tests/fixtures/config-app/.env.example
+- `DATABASE_URL` **required** — tests/detectors.test.ts
+- `PORT` **required** — tests/detectors.test.ts
 - `VAR` **required** — src/detectors/config.ts
 - `VAR_NAME` **required** — src/detectors/config.ts
 - `VITE_VAR_NAME` **required** — src/detectors/config.ts
 
 ## Config Files
 
-- `tests/fixtures/config-app/.env.example`
 - `tsconfig.json`
 
 ---
@@ -179,12 +205,6 @@
 
 ## auth
 - middleware — `src/detectors/middleware.ts`
-- auth — `tests/fixtures/graph-app/src/auth.ts`
-- middleware — `tests/fixtures/graph-app/src/middleware.ts`
-- auth — `tests/fixtures/middleware-app/src/middleware/auth.ts`
-
-## rate-limit
-- rate-limit — `tests/fixtures/middleware-app/src/middleware/rate-limit.ts`
 
 ---
 
@@ -192,10 +212,13 @@
 
 ## Most Imported Files (change these carefully)
 
-- `src/types.ts` — imported by **44** files
+- `src/types.ts` — imported by **48** files
 - `src/scanner.ts` — imported by **16** files
 - `src/ast/loader.ts` — imported by **6** files
+- `src/plugins/terraform/types.ts` — imported by **6** files
 - `src/ast/extract-brightscript.ts` — imported by **5** files
+- `src/plugins/cicd/types.ts` — imported by **5** files
+- `src/plugins/githooks/types.ts` — imported by **5** files
 - `src/detectors/routes.ts` — imported by **3** files
 - `src/detectors/schema.ts` — imported by **3** files
 - `src/detectors/components.ts` — imported by **3** files
@@ -209,22 +232,19 @@
 - `src/ast/extract-csharp.ts` — imported by **3** files
 - `src/ast/extract-php.ts` — imported by **3** files
 - `src/generators/ai-config.ts` — imported by **3** files
-- `src/core.ts` — imported by **3** files
-- `src/monorepo/discover.ts` — imported by **3** files
-- `tests/fixtures/graph-app/src/db.ts` — imported by **3** files
 
 ## Import Map (who imports what)
 
-- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-brighterscript.ts`, `src/ast/extract-brightscript.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts` +39 more
+- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-brighterscript.ts`, `src/ast/extract-brightscript.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts` +43 more
 - `src/scanner.ts` ← `src/core.ts`, `src/detectors/components.ts`, `src/detectors/config.ts`, `src/detectors/contracts.ts`, `src/detectors/coverage.ts` +11 more
 - `src/ast/loader.ts` ← `src/ast/extract-components.ts`, `src/ast/extract-routes.ts`, `src/ast/extract-schema.ts`, `src/detectors/components.ts`, `src/detectors/routes.ts` +1 more
+- `src/plugins/terraform/types.ts` ← `src/plugins/terraform/file-collector.ts`, `src/plugins/terraform/formatter.ts`, `src/plugins/terraform/hcl-parser.ts`, `src/plugins/terraform/index.ts`, `src/plugins/terraform/index.ts` +1 more
 - `src/ast/extract-brightscript.ts` ← `src/ast/extract-brighterscript.ts`, `src/detectors/events.ts`, `src/detectors/libs.ts`, `src/detectors/middleware.ts`, `src/detectors/routes.ts`
+- `src/plugins/cicd/types.ts` ← `src/plugins/cicd/circleci.ts`, `src/plugins/cicd/formatter.ts`, `src/plugins/cicd/github-actions.ts`, `src/plugins/cicd/index.ts`, `src/plugins/cicd/index.ts`
+- `src/plugins/githooks/types.ts` ← `src/plugins/githooks/formatter.ts`, `src/plugins/githooks/husky.ts`, `src/plugins/githooks/index.ts`, `src/plugins/githooks/lefthook.ts`, `src/plugins/githooks/raw.ts`
 - `src/detectors/routes.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/schema.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/components.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
-- `src/detectors/config.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
-- `src/detectors/middleware.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
-- `src/formatter.ts` ← `src/core.ts`, `src/index.ts`, `src/mcp-server.ts`
 
 ---
 
@@ -253,7 +273,7 @@
 # Test Coverage
 
 > **60%** of routes and models are covered by tests
-> 45 test files found
+> 20 test files found
 
 ## Covered Routes
 

@@ -2,7 +2,28 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**43 library files** across 11 modules
+**61 library files** across 12 modules
+
+## Plugins (18 files)
+
+- `src/plugins/terraform/hcl-parser.ts` — parseHclFile, parseTfvars, stripComments, extractBraceBlock
+- `src/plugins/terraform/file-collector.ts` — collectTfFiles, readFileSafe, CollectedFiles
+- `src/plugins/terraform/service-matcher.ts` — matchServiceBlocks, normaliseServiceName, ScoredBlock
+- `src/plugins/cicd/index.ts` — createCICDPlugin, CICDPluginConfig
+- `src/plugins/cicd/yaml-parser.ts` — parseYAML, parseFlowSequence
+- `src/plugins/skills/index.ts` — createSkillsPlugin, Skill
+- `src/plugins/terraform/extractor.ts` — extractServiceInfrastructure, extractEnvironments
+- `src/plugins/cicd/circleci.ts` — extractCircleCIWorkflows
+- `src/plugins/cicd/formatter.ts` — formatCICD
+- `src/plugins/cicd/github-actions.ts` — extractGitHubActionsWorkflow
+- `src/plugins/githooks/formatter.ts` — formatGitHooks
+- `src/plugins/githooks/husky.ts` — parseHusky
+- `src/plugins/githooks/index.ts` — createGitHooksPlugin
+- `src/plugins/githooks/lefthook.ts` — parseLefthook
+- `src/plugins/githooks/raw.ts` — parseRawHooks
+- `src/plugins/skills/formatter.ts` — formatSkills
+- `src/plugins/terraform/formatter.ts` — formatInfrastructure
+- `src/plugins/terraform/index.ts` — createTerraformPlugin
 
 ## Detectors (15 files)
 

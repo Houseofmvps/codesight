@@ -112,6 +112,34 @@
 - `src/monorepo/discover.ts` — function discoverPackages: (root, config) => Promise<PackageInfo[]>, interface PackageInfo
 - `src/monorepo/orchestrator.ts` — function runMonorepoScan: (root, userConfig, targetPackage?) => Promise<PackageInfo[]>
 - `src/monorepo/watch.ts` — function watchMonorepo: (root, userConfig) => Promise<void>
+- `src/plugins/cicd/circleci.ts` — function extractCircleCIWorkflows: (parsed, relPath, rawContent) => CICDPipeline[]
+- `src/plugins/cicd/formatter.ts` — function formatCICD: (pipelines) => string
+- `src/plugins/cicd/github-actions.ts` — function extractGitHubActionsWorkflow: (parsed, relPath, rawContent) => CICDPipeline | null
+- `src/plugins/cicd/index.ts` — function createCICDPlugin: (config) => CodesightPlugin, interface CICDPluginConfig
+- `src/plugins/cicd/yaml-parser.ts` — function parseYAML: (text) => any, function parseFlowSequence: (s) => any[]
+- `src/plugins/githooks/formatter.ts` — function formatGitHooks: (hooks) => string
+- `src/plugins/githooks/husky.ts` — function parseHusky: (root) => Promise<GitHook[]>
+- `src/plugins/githooks/index.ts` — function createGitHooksPlugin: () => CodesightPlugin
+- `src/plugins/githooks/lefthook.ts` — function parseLefthook: (root) => Promise<GitHook[]>
+- `src/plugins/githooks/raw.ts` — function parseRawHooks: (root) => Promise<GitHook[]>
+- `src/plugins/skills/formatter.ts` — function formatSkills: (skills) => string
+- `src/plugins/skills/index.ts` — function createSkillsPlugin: () => CodesightPlugin, interface Skill
+- `src/plugins/terraform/extractor.ts` — function extractServiceInfrastructure: (matchedBlocks, allBlocks, config) => ServiceInfrastructure, function extractEnvironments: (tfvarsFiles, serviceName) => Promise<Record<string, EnvironmentOverrides>>
+- `src/plugins/terraform/file-collector.ts`
+  - function collectTfFiles: (projectRoot, config) => Promise<CollectedFiles>
+  - function readFileSafe: (path) => Promise<string>
+  - interface CollectedFiles
+- `src/plugins/terraform/formatter.ts` — function formatInfrastructure: (infra) => string
+- `src/plugins/terraform/hcl-parser.ts`
+  - function parseHclFile: (content, filePath) => HclBlock[]
+  - function parseTfvars: (content) => Record<string, string>
+  - function stripComments: (content) => string
+  - function extractBraceBlock: (content, startAfterOpenBrace) => string | null
+- `src/plugins/terraform/index.ts` — function createTerraformPlugin: (config) => CodesightPlugin
+- `src/plugins/terraform/service-matcher.ts`
+  - function matchServiceBlocks: (projectName, blocks, config) => HclBlock[]
+  - function normaliseServiceName: (name) => string
+  - interface ScoredBlock
 - `src/scanner.ts`
   - function readCodesightIgnore: (root) => Promise<string[]>
   - function loadFileHashCache: (outputDir) => Promise<FileHashCache>
