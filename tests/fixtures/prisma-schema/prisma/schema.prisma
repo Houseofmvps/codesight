@@ -1,0 +1,12 @@
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  name  String
+  posts Post[]
+}
+model Post {
+  id     String @id @default(cuid())
+  title  String
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}

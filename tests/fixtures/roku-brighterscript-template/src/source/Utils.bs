@@ -1,0 +1,5 @@
+namespace app.utils
+    function greet() as string
+        return "hi"
+    end function
+end namespace

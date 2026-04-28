@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="MainScene" extends="Scene">
+  <interface>
+    <field id="screenManager" type="node" />
+    <field id="exitApp" type="boolean" value="false" />
+  </interface>
+</component>

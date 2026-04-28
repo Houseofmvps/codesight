@@ -1,0 +1,6 @@
+[project]
+name = "celery-worker"
+dependencies = [
+  "celery>=5.4.0",
+  "redis>=5.0.0",
+]

@@ -1,0 +1,9 @@
+# Project Context
+
+This is a monorepo with 1 package indexed by codesight.
+Read `..codesight/CODESIGHT.md` for the full package index — it lists every package that has a context file.
+
+Before exploring a package directory, check if `<package>/..codesight/CODESIGHT.md` exists — faster than grep/find.
+Use `<package>/..codesight/deps.md` to find cross-package dependencies.
+
+Do not crawl the file tree — use the codesight index instead.

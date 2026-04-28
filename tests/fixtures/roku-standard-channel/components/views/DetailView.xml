@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="DetailView" extends="Group">
+  <interface>
+    <field id="itemId" type="String" />
+  </interface>
+</component>

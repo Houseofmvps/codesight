@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeView" extends="Group">
+  <interface>
+    <field id="items" type="array" />
+  </interface>
+</component>

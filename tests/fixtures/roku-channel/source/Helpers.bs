@@ -1,0 +1,10 @@
+import "pkg:/source/utils/Utils.brs"
+
+namespace app.helpers
+end namespace
+
+class RokuHelper
+    function sayHi() as string
+        return "hi"
+    end function
+end class

@@ -648,10 +648,10 @@ async function detectFrameworks(
     } catch {}
   }
 
-  // Roku / SceneGraph — plain-text `manifest` file at root with title + major_version.
-  // Also matches the rokucommunity/brighterscript-template layout where the
-  // manifest lives under `src/` and root carries a bsconfig.json marker.
-  if (await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root)) {
+  // Roku / SceneGraph — plain-text `manifest` at root, bsconfig.json template
+  // layouts, or `brighterscript` package in devDependencies (enterprise builds
+  // that generate the manifest at package time).
+  if (await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root) || deps["brighterscript"]) {
     frameworks.push("roku-scenegraph");
   }
 
@@ -817,7 +817,7 @@ async function detectLanguage(
   const hasCsproj = await (async () => {
     try { return (await readdir(root)).some((e) => e.endsWith(".csproj") || e.endsWith(".sln")); } catch { return false; }
   })();
-  const hasRokuChannel = await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root);
+  const hasRokuChannel = await hasRokuManifest(root) || await detectBrighterScriptTemplateRoot(root) || !!deps["brighterscript"];
 
   const langs: string[] = [];
   if (hasTsConfig || deps["typescript"]) langs.push("typescript");
@@ -1315,14 +1315,18 @@ export async function hasRokuManifest(dir: string): Promise<boolean> {
 }
 
 /**
- * Detect the `rokucommunity/brighterscript-template` layout:
- *   - no manifest at root
- *   - bsconfig.json at root (BrighterScript project marker)
- *   - exactly one `src/manifest` with the standard channel signature
+ * Detect BrighterScript-based Roku channel roots without a `manifest` file.
  *
- * Treat the root as a single Roku channel rooted at `src/`. Prevents the
- * generic monorepo walker from promoting `src/` to a workspace and leaving
- * the root framework as `raw-http`.
+ * Two layouts are recognized:
+ *
+ *   1. rokucommunity/brighterscript-template — bsconfig.json at root,
+ *      channel under `src/manifest`.
+ *
+ *   2. Enterprise / custom layout — bsconfig.json at root with `rootDir: ""`
+ *      (channel root IS the project root). Manifest is absent because it is
+ *      generated at build time (e.g. python/gulp build scripts). The canonical
+ *      Roku directories `source/` and `components/` with at least one .brs
+ *      file serve as the structural signal instead.
  */
 export async function detectBrighterScriptTemplateRoot(dir: string): Promise<boolean> {
   if (await hasRokuManifest(dir)) return false;
@@ -1332,7 +1336,20 @@ export async function detectBrighterScriptTemplateRoot(dir: string): Promise<boo
   } catch {
     return false;
   }
-  return hasRokuManifest(join(dir, "src"));
+  // Layout 1: rokucommunity template — manifest lives under src/
+  if (await hasRokuManifest(join(dir, "src"))) return true;
+  // Layout 2: channel-at-root without manifest — source/ or components/ with .brs
+  const hasBrsIn = async (subdir: string): Promise<boolean> => {
+    try {
+      const entries = await readdir(join(dir, subdir), { withFileTypes: true });
+      return entries.some((e) => e.isFile() && (e.name.endsWith(".brs") || e.name.endsWith(".bs")));
+    } catch {
+      return false;
+    }
+  };
+  if (await hasBrsIn("source")) return true;
+  if (await hasBrsIn("components")) return true;
+  return false;
 }
 
 /**

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="ErrorModal" extends="Group">
+  <interface>
+    <field id="message" type="String" />
+  </interface>
+</component>

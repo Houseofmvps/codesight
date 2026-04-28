@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<component name="HomeView" extends="Group">
+  <interface>
+    <field id="pageID" type="String" />
+    <field id="channelID" type="String" />
+  </interface>
+  <script type="text/brightscript" uri="pkg:/components/views/HomeView.brs" />
+</component>

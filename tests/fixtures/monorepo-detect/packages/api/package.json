@@ -1,0 +1,1 @@
+{"name":"@test/api","dependencies":{"hono":"^4.0.0","drizzle-orm":"^0.30.0"}}
