@@ -126,19 +126,41 @@ export async function collectFiles(
 ): Promise<string[]> {
   const files: string[] = [];
 
-  // Build a set of exact dir names to skip (simple patterns like "data", "fixtures")
-  // Also support simple glob-style with trailing /* or /**
-  const extraIgnore = new Set(
-    ignorePatterns.map((p) => p.replace(/\/\*\*?$/, "").replace(/^\//, ""))
-  );
+  // Split positive ignores from gitignore-style negations (`!pattern`). A
+  // negation explicitly re-includes an entry that would otherwise be skipped
+  // — including dot-folders, which are skipped by default.
+  const positivePatterns: string[] = [];
+  const negationPatterns: string[] = [];
+  for (const raw of ignorePatterns) {
+    if (raw.startsWith("!")) {
+      negationPatterns.push(raw.slice(1));
+    } else {
+      positivePatterns.push(raw);
+    }
+  }
+
+  const normalize = (p: string) => p.replace(/\/\*\*?$/, "").replace(/^\//, "");
+  const extraIgnore = new Set(positivePatterns.map(normalize));
+  const negationNames = new Set(negationPatterns.map(normalize));
+
+  function isExplicitlyIncluded(name: string, fullPath: string): boolean {
+    if (negationNames.has(name)) return true;
+    const rel = fullPath.replace(root, "").replace(/^[/\\]/, "");
+    for (const pattern of negationPatterns) {
+      const clean = normalize(pattern);
+      if (rel === clean || rel.startsWith(clean + "/") || rel.startsWith(clean + "\\")) return true;
+    }
+    return false;
+  }
 
   function shouldIgnoreDir(name: string, fullPath: string): boolean {
+    if (isExplicitlyIncluded(name, fullPath)) return false;
     if (IGNORE_DIRS.has(name)) return true;
     if (extraIgnore.has(name)) return true;
     // Check if any pattern matches a path segment
     const rel = fullPath.replace(root, "").replace(/^[/\\]/, "");
-    for (const pattern of ignorePatterns) {
-      const clean = pattern.replace(/\/\*\*?$/, "").replace(/^\//, "");
+    for (const pattern of positivePatterns) {
+      const clean = normalize(pattern);
       if (rel === clean || rel.startsWith(clean + "/") || rel.startsWith(clean + "\\")) return true;
     }
     return false;
@@ -153,8 +175,14 @@ export async function collectFiles(
       return;
     }
     for (const entry of entries) {
-      if (entry.name.startsWith(".") && entry.name !== ".env" && entry.name !== ".env.example" && entry.name !== ".env.local") continue;
       const fullPath = join(dir, entry.name);
+      if (
+        entry.name.startsWith(".") &&
+        entry.name !== ".env" &&
+        entry.name !== ".env.example" &&
+        entry.name !== ".env.local" &&
+        !isExplicitlyIncluded(entry.name, fullPath)
+      ) continue;
       if (entry.isDirectory()) {
         if (shouldIgnoreDir(entry.name, fullPath)) continue;
         await walk(fullPath, depth + 1);

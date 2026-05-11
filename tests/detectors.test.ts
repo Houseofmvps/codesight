@@ -1300,3 +1300,71 @@ end sub
     );
   });
 });
+
+// =================== DOT-FOLDER INCLUSION TESTS (issue #41) ===================
+
+describe("Dot-folder inclusion via .codesightignore negation", async () => {
+  const mods = await loadModules();
+
+  it("skips dot-folders by default", async () => {
+    const dir = await writeFixture("dotfolder-default-skip", {
+      "package.json": JSON.stringify({ name: "test" }),
+      "src/index.ts": "export const a = 1;",
+      ".source/lib.ts": "export const fromDot = 1;",
+    });
+    const files = await mods.collectFiles(dir);
+    assert.ok(
+      files.some((f: string) => f.endsWith("src/index.ts")),
+      "expected src/index.ts in default scan"
+    );
+    assert.ok(
+      !files.some((f: string) => f.includes(".source/")),
+      `did not expect .source/* in default scan, got: ${files.join(", ")}`
+    );
+  });
+
+  it("includes a dot-folder when explicitly unignored via !.name", async () => {
+    const dir = await writeFixture("dotfolder-negate-include", {
+      "package.json": JSON.stringify({ name: "test" }),
+      "src/index.ts": "export const a = 1;",
+      ".source/lib.ts": "export const fromDot = 1;",
+      ".config/skip.ts": "export const skipped = 1;",
+    });
+    // .codesightignore unignores .source but leaves .config alone
+    const files = await mods.collectFiles(dir, 10, ["!.source"]);
+    assert.ok(
+      files.some((f: string) => f.endsWith(".source/lib.ts")),
+      `expected .source/lib.ts in scan, got: ${files.join(", ")}`
+    );
+    assert.ok(
+      !files.some((f: string) => f.includes(".config/")),
+      `did not expect .config/* in scan, got: ${files.join(", ")}`
+    );
+  });
+
+  it("supports multiple negated dot-folders", async () => {
+    const dir = await writeFixture("dotfolder-multi-negate", {
+      "package.json": JSON.stringify({ name: "test" }),
+      ".source/a.ts": "export const a = 1;",
+      ".config/b.ts": "export const b = 1;",
+      ".hidden/c.ts": "export const c = 1;",
+    });
+    const files = await mods.collectFiles(dir, 10, ["!.source", "!.config"]);
+    assert.ok(files.some((f: string) => f.endsWith(".source/a.ts")), `expected .source/a.ts`);
+    assert.ok(files.some((f: string) => f.endsWith(".config/b.ts")), `expected .config/b.ts`);
+    assert.ok(!files.some((f: string) => f.includes(".hidden/")), `did not expect .hidden/*`);
+  });
+
+  it("negation overrides positive ignore for same name", async () => {
+    const dir = await writeFixture("dotfolder-negate-overrides", {
+      "package.json": JSON.stringify({ name: "test" }),
+      ".source/lib.ts": "export const x = 1;",
+    });
+    // Even if user lists .source as a positive ignore, the negation wins.
+    const files = await mods.collectFiles(dir, 10, [".source", "!.source"]);
+    assert.ok(
+      files.some((f: string) => f.endsWith(".source/lib.ts")),
+      `expected .source/lib.ts (negation should override), got: ${files.join(", ")}`
+    );
+  });
+});
