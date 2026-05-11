@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | typescript
 
-> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 61 lib files | 6 env vars | 5 middleware | 11 events | 60% test coverage
-> **Token savings:** this file is ~4,700 tokens. Without it, AI exploration would cost ~32,300 tokens. **Saves ~27,600 tokens per conversation.**
-> **Last scanned:** 2026-05-11 18:39 — re-run after significant changes
+> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 61 lib files | 6 env vars | 5 middleware | 13 events | 60% test coverage
+> **Token savings:** this file is ~4,800 tokens. Without it, AI exploration would cost ~32,700 tokens. **Saves ~27,900 tokens per conversation.**
+> **Last scanned:** 2026-05-11 18:43 — re-run after significant changes
 
 ---
 
@@ -284,12 +284,17 @@
 - `billing.report_usage_to_stripe` [queue] → celery-task — `tests/fixtures/celery-events/tasks.py`
 - `tests.fixtures.python-celery-workspace.services.worker-service.tasks.sync_users` [queue] → celery-task — `tests/fixtures/python-celery-workspace/services/worker-service/tasks.py`
 
+## scenegraph-observer
+
+- `exitApp` [event] → node-field — `tests/fixtures/roku-apmc-style/components/MainScene.brs`
+- `someField` [event] → node-field — `tests/fixtures/roku-channel/components/MainScene.brs`
+
 ---
 
 # Test Coverage
 
 > **60%** of routes and models are covered by tests
-> 155 test files found
+> 190 test files found
 
 ## Covered Routes
 
