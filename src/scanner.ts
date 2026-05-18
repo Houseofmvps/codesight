@@ -148,7 +148,17 @@ export async function collectFiles(
     const rel = fullPath.replace(root, "").replace(/^[/\\]/, "");
     for (const pattern of negationPatterns) {
       const clean = normalize(pattern);
-      if (rel === clean || rel.startsWith(clean + "/") || rel.startsWith(clean + "\\")) return true;
+      // Exact match by name or relative path only. A negation like `!.source`
+      // re-includes the `.source` entry itself; it does NOT auto-re-include
+      // arbitrary descendants. Otherwise nested dot-folders (.source/.git)
+      // and explicit positive ignores (.source/testfolder) would be silently
+      // overridden by any parent-level negation. (gitignore semantics: a
+      // child can only be re-included by an explicit `!child` pattern.)
+      if (rel === clean) return true;
+      // Explicit recursive negation `!path/**` re-includes path and descendants.
+      if (pattern.endsWith("/**") || pattern.endsWith("/*")) {
+        if (rel.startsWith(clean + "/") || rel.startsWith(clean + "\\")) return true;
+      }
     }
     return false;
   }

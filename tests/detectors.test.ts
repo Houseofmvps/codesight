@@ -1367,4 +1367,67 @@ describe("Dot-folder inclusion via .codesightignore negation", async () => {
       `expected .source/lib.ts (negation should override), got: ${files.join(", ")}`
     );
   });
+
+  // Regression: issue #42 — negation must not silently override positive
+  // ignores at deeper paths. `!.source` re-includes `.source` itself, not
+  // arbitrary descendants like `.source/testfolder`.
+  it("positive ignore at deeper path wins over parent-level negation", async () => {
+    const dir = await writeFixture("dotfolder-negate-deep-positive", {
+      "package.json": JSON.stringify({ name: "test" }),
+      ".source/keep.ts": "export const k = 1;",
+      ".source/testfolder/skip.ts": "export const s = 1;",
+    });
+    const files = await mods.collectFiles(dir, 10, [
+      ".source/testfolder/*",
+      ".source/testfolder*",
+      ".source/testfolder",
+      "!.source",
+    ]);
+    assert.ok(
+      files.some((f: string) => f.endsWith(".source/keep.ts")),
+      `expected .source/keep.ts in scan, got: ${files.join(", ")}`
+    );
+    assert.ok(
+      !files.some((f: string) => f.includes("testfolder")),
+      `did not expect anything from .source/testfolder, got: ${files.join(", ")}`
+    );
+  });
+
+  // Regression: issue #42 — parent-level negation must not auto-re-include
+  // nested dot-folders. `!.source` re-includes `.source`; `.source/.vs` is
+  // still subject to the default dot-folder skip.
+  it("nested dot-folders inside a re-included dot-folder remain excluded", async () => {
+    const dir = await writeFixture("dotfolder-nested-dot-excluded", {
+      "package.json": JSON.stringify({ name: "test" }),
+      ".source/keep.ts": "export const k = 1;",
+      ".source/.vs/skip.ts": "export const s = 1;",
+    });
+    const files = await mods.collectFiles(dir, 10, ["!.source"]);
+    assert.ok(
+      files.some((f: string) => f.endsWith(".source/keep.ts")),
+      `expected .source/keep.ts in scan, got: ${files.join(", ")}`
+    );
+    assert.ok(
+      !files.some((f: string) => f.includes("/.vs/")),
+      `did not expect .source/.vs/*, got: ${files.join(", ")}`
+    );
+  });
+
+  // Opt-in: explicit recursive negation `!path/**` re-includes descendants.
+  it("recursive negation `!path/**` re-includes descendants", async () => {
+    const dir = await writeFixture("dotfolder-recursive-negate", {
+      "package.json": JSON.stringify({ name: "test" }),
+      ".source/keep.ts": "export const k = 1;",
+      ".source/.vs/lib.ts": "export const v = 1;",
+    });
+    const files = await mods.collectFiles(dir, 10, ["!.source", "!.source/**"]);
+    assert.ok(
+      files.some((f: string) => f.endsWith(".source/keep.ts")),
+      `expected .source/keep.ts, got: ${files.join(", ")}`
+    );
+    assert.ok(
+      files.some((f: string) => f.endsWith(".source/.vs/lib.ts")),
+      `expected .source/.vs/lib.ts via recursive negation, got: ${files.join(", ")}`
+    );
+  });
 });
