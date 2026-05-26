@@ -371,6 +371,43 @@ describe("Component Detection", async () => {
     assert.ok(components.length >= 2);
     assert.ok(components.some((c: any) => c.name === "UserProfile" && c.props.includes("name")));
   });
+
+  it("detects components in a workspace named `ui/` without filtering them as shadcn primitives", async () => {
+    // Regression: a bare `/ui/` segment in the file path used to trigger the
+    // shadcn-primitive filter, which wrongly dropped every custom component
+    // in monorepos whose UI package is literally named `ui/` (e.g. morgan).
+    // The real shadcn case lives at `components/ui/<primitive>.tsx` and is
+    // still filtered here.
+    const dir = await writeFixture("ui-workspace-app", {
+      "package.json": JSON.stringify({ name: "root", private: true }),
+      "pnpm-workspace.yaml": "packages:\n  - ui\n",
+      "ui/package.json": JSON.stringify({
+        name: "@app/ui",
+        dependencies: { react: "^19.0.0" },
+      }),
+      // Custom app component inside the `ui` workspace. PascalCase name, so
+      // the UI_PRIMITIVES filename filter must not catch it either.
+      "ui/src/components/AppShell.tsx": `interface AppShellProps { children: React.ReactNode; width?: "default" | "narrow" }
+const AppShell = ({ children, width = "default" }: AppShellProps) => {
+  return <div>{children}</div>;
+};
+export default AppShell;`,
+      // shadcn primitive at the canonical path. Must still be filtered.
+      "ui/src/components/ui/button.tsx": `export const Button = ({ label }: { label: string }) => <button>{label}</button>;`,
+    });
+    const project = await mods.detectProject(dir);
+    assert.equal(project.componentFramework, "react", "react workspace dep should be aggregated");
+    const files = await mods.collectFiles(dir);
+    const components = await mods.detectComponents(files, project);
+    assert.ok(
+      components.some((c: any) => c.name === "AppShell"),
+      `expected AppShell to be detected, got: ${components.map((c: any) => c.name).join(", ") || "<none>"}`,
+    );
+    assert.ok(
+      !components.some((c: any) => c.name === "Button"),
+      "shadcn primitive at components/ui/button.tsx should still be filtered",
+    );
+  });
 });
 
 // =================== DEPENDENCY GRAPH TESTS ===================

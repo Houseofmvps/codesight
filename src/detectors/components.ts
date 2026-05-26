@@ -63,9 +63,13 @@ const UI_PRIMITIVES = new Set([
 
 function isUIPrimitive(filePath: string): boolean {
   const name = basename(filePath, extname(filePath)).toLowerCase();
+  // Note: do NOT match a bare `/ui/` segment here. That collides with monorepo
+  // workspaces literally named `ui/` (e.g. `ui/src/components/*.tsx`), where
+  // every custom component would be wrongly filtered. The real shadcn case is
+  // `components/ui/` (caught below) or lowercase primitive filenames (caught
+  // via UI_PRIMITIVES). Vendor paths (`@radix-ui`, `@shadcn`) are kept.
   return (
     UI_PRIMITIVES.has(name) ||
-    filePath.includes("/ui/") ||
     filePath.includes("/components/ui/") ||
     filePath.includes("@radix-ui") ||
     filePath.includes("@shadcn")
