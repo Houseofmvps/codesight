@@ -14,6 +14,7 @@ import { detectEvents } from "./detectors/events.js";
 import { detectTestCoverage } from "./detectors/coverage.js";
 import { detectOpenAPISpec } from "./detectors/openapi.js";
 import { writeOutput, computeCrudGroups } from "./formatter.js";
+import { resolveNativeAst } from "./ast/native-loader.js";
 import { createRequire } from "node:module";
 import type { ScanResult, CodesightConfig } from "./types.js";
 
@@ -65,16 +66,21 @@ export async function scan(
 
   const disabled = new Set(userConfig.disableDetectors || []);
 
+  // Resolve native-AST settings once. Detectors that consult plugins call
+  // resolveNativeAst with the same userConfig and share this instance (and its
+  // diagnostics sink) via reference memoization.
+  const nativeResolved = resolveNativeAst(userConfig.nativeAst, project.root);
+
   const [rawHttpRoutes, schemas, components, libs, configResult, middleware, graph,
          graphqlRoutes, grpcRoutes, wsRoutes, events, openapi] =
     await Promise.all([
       disabled.has("routes") ? Promise.resolve([]) : detectRoutes(files, project, userConfig),
-      disabled.has("schema") ? Promise.resolve([]) : detectSchemas(files, project),
-      disabled.has("components") ? Promise.resolve([]) : detectComponents(files, project),
+      disabled.has("schema") ? Promise.resolve([]) : detectSchemas(files, project, userConfig),
+      disabled.has("components") ? Promise.resolve([]) : detectComponents(files, project, userConfig),
       disabled.has("libs") ? Promise.resolve([]) : detectLibs(files, project),
       disabled.has("config") ? Promise.resolve({ envVars: [], configFiles: [], dependencies: {}, devDependencies: {} }) : detectConfig(files, project),
       disabled.has("middleware") ? Promise.resolve([]) : detectMiddleware(files, project),
-      disabled.has("graph") ? Promise.resolve({ edges: [], hotFiles: [] }) : detectDependencyGraph(files, project),
+      disabled.has("graph") ? Promise.resolve({ edges: [], hotFiles: [] }) : detectDependencyGraph(files, project, userConfig),
       disabled.has("graphql") ? Promise.resolve([]) : detectGraphQLRoutes(files, project),
       disabled.has("graphql") ? Promise.resolve([]) : detectGRPCRoutes(files, project),
       disabled.has("graphql") ? Promise.resolve([]) : detectWebSocketRoutes(files, project),
@@ -126,6 +132,10 @@ export async function scan(
     const astSchemas = schemas.filter((s) => s.confidence === "ast").length;
     const astComponents = components.filter((c) => c.confidence === "ast").length;
     const totalAST = astRoutes + astSchemas + astComponents;
+    const nativeRoutes = routes.filter((r) => r.confidence === "native").length;
+    const nativeSchemas = schemas.filter((s) => s.confidence === "native").length;
+    const nativeComponents = components.filter((c) => c.confidence === "native").length;
+    const totalNative = nativeRoutes + nativeSchemas + nativeComponents;
     const specialCounts: string[] = [];
     const gqlCount = routes.filter((r) => ["QUERY", "MUTATION", "SUBSCRIPTION"].includes(r.method)).length;
     const grpcCount = routes.filter((r) => r.method === "RPC").length;
@@ -135,8 +145,11 @@ export async function scan(
     if (wsCount > 0) specialCounts.push(`${wsCount} ws`);
     if (events.length > 0) specialCounts.push(`${events.length} events`);
     const specialStr = specialCounts.length > 0 ? `, ${specialCounts.join(", ")}` : "";
-    if (totalAST > 0) {
-      console.log(` done (AST: ${astRoutes} routes, ${astSchemas} models, ${astComponents} components${specialStr})`);
+    const detail: string[] = [];
+    if (totalNative > 0) detail.push(`native: ${nativeRoutes} routes, ${nativeSchemas} models, ${nativeComponents} components`);
+    if (totalAST > 0) detail.push(`AST: ${astRoutes} routes, ${astSchemas} models, ${astComponents} components`);
+    if (detail.length > 0) {
+      console.log(` done (${detail.join(" | ")}${specialStr})`);
     } else if (specialCounts.length > 0) {
       console.log(` done (${specialCounts.join(", ")})`);
     } else {
@@ -162,6 +175,7 @@ export async function scan(
     testCoverage: testCoverage.testFiles.length > 0 ? testCoverage : undefined,
     crudGroups: crudGroups.length > 0 ? crudGroups : undefined,
     customSections: customSections.length > 0 ? customSections : undefined,
+    nativeDiagnostics: nativeResolved.diagnostics.length > 0 ? nativeResolved.diagnostics : undefined,
   };
 
   const outputContent = await writeOutput(tempResult, outputDir);
