@@ -88,8 +88,14 @@ list restricts native parsing to those identifiers.
 
 ## The WASM ABI
 
-There are **no imports** — codesight instantiates with an empty import object, so
-the module must not require WASI, JS-binding glue, or any host functions.
+The host instantiates every module with a **minimal WASI import object** (Node's
+built-in `node:wasi` — clock/random/exit/stderr only; **no filesystem, no network,
+no env/args**). Pure-compute modules with no imports (Rust/AssemblyScript on
+`wasm32-unknown-unknown`) ignore it; modules whose runtime needs WASI (e.g. Go
+`//go:wasmexport` reactors) get exactly those minimal capabilities. A module that
+exports `_initialize` is initialized before any other export is called. The module
+must not require JS-binding glue or host functions beyond WASI. `node:wasi` is built
+in, so codesight keeps its zero-dependency guarantee.
 
 A conforming module exports a small fixed core plus one optional `parse*` function
 per capability it provides:
@@ -277,10 +283,13 @@ from built-in `ast`/`regex` results in the scan summary.
 
 ## Plugin skeleton
 
-Implement the module in any toolchain that compiles to a `wasm32` module with **no
-imports** (no WASI, no JS-binding glue). The allocator and the per-kind marshalling
-are boilerplate; the only part that changes is your extraction logic. Export only
-the `parse*` functions for the kinds you support.
+Implement the module in any toolchain that targets `wasm32` and imports **at most
+`wasi_snapshot_preview1`** (no JS-binding glue, no other host functions). Pure-compute
+languages (Rust/AssemblyScript via `wasm32-unknown-unknown`) need no imports at all;
+full-runtime languages (Go via `GOOS=wasip1 -buildmode=c-shared`) import WASI, which
+the host supplies minimally. The allocator and the per-kind marshalling are
+boilerplate; the only part that changes is your extraction logic. Export only the
+`parse*` functions for the kinds you support.
 
 Required exports and their behavior, in pseudocode:
 

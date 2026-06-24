@@ -28,7 +28,14 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import type { NativeLang } from "../types.js";
+
+// `node:wasi` is loaded lazily (below) rather than via a static import: importing
+// it emits a one-time ExperimentalWarning at module-load, which would fire on
+// every run. Deferring the load to first plugin use lets us install a targeted
+// warning filter first, and avoids loading WASI at all when native AST is off.
+const nodeRequire = createRequire(import.meta.url);
 
 /** Capability namespace, part of the discovery filename: codesight-<lang>-<CAPABILITY>.wasm */
 const CAPABILITY = "ast";
@@ -65,6 +72,24 @@ export function resetNativePluginProvider(): void {
 // Instance cache keyed by resolved .wasm path (or sentinel for "tried, not loadable").
 const cache = new Map<string, LoadedPlugin | null>();
 
+// node:wasi prints a one-time "ExperimentalWarning: WASI is an experimental
+// feature..." to stderr when constructed. Suppress *only* that specific warning
+// (installed lazily, the first time we actually use WASI) so it doesn't pollute
+// CLI output — every other process warning passes through unchanged.
+let wasiWarningSuppressed = false;
+function suppressWasiExperimentalWarning(): void {
+  if (wasiWarningSuppressed) return;
+  wasiWarningSuppressed = true;
+  const original = process.emitWarning.bind(process);
+  (process as { emitWarning: unknown }).emitWarning = (warning: unknown, ...args: unknown[]) => {
+    const opt = args[0];
+    const type = opt && typeof opt === "object" ? (opt as { type?: string }).type : opt;
+    const message = typeof warning === "string" ? warning : (warning as Error | undefined)?.message ?? "";
+    if (type === "ExperimentalWarning" && String(message).includes("WASI")) return;
+    return (original as (...a: unknown[]) => void)(warning, ...args);
+  };
+}
+
 /**
  * Resolve + load the plugin for `lang`, searching `pluginDirs` in order. Returns
  * null when no plugin is available; a malformed/incompatible plugin is treated
@@ -90,7 +115,26 @@ export function loadPlugin(lang: NativeLang, pluginDirs: string[]): LoadedPlugin
   try {
     const bytes = readFileSync(wasmPath);
     const module = new WebAssembly.Module(bytes);
-    const instance = new WebAssembly.Instance(module, {}); // no imports
+
+    // Always instantiate with a WASI import object. Pure-compute (no-imports)
+    // plugins ignore the extras; plugins whose runtime needs WASI (e.g. Go
+    // reactors built with //go:wasmexport) get a minimal, capability-restricted
+    // environment — NO filesystem, NO network, no args/env. node:wasi is built
+    // in, so this keeps the zero-dependency constraint. "Plugins are pure
+    // compute" — if a kind ever needs project context, it flows through the ABI,
+    // not the filesystem.
+    suppressWasiExperimentalWarning();
+    const { WASI } = nodeRequire("node:wasi") as typeof import("node:wasi");
+    const wasi = new WASI({ version: "preview1" });
+    const instance = new WebAssembly.Instance(module, wasi.getImportObject() as WebAssembly.Imports);
+
+    // Reactor modules (Go) export `_initialize` and must be initialized before
+    // any other export is called. No-imports modules (Rust/AssemblyScript) have
+    // neither `_initialize` nor `_start` and are used as-is.
+    if (typeof (instance.exports as Record<string, unknown>)._initialize === "function") {
+      wasi.initialize(instance);
+    }
+
     loaded = bindExports(instance.exports);
   } catch {
     loaded = null; // unloadable plugin → treated as absent
