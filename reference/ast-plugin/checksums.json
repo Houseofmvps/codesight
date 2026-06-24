@@ -1,0 +1,7 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "assembly/index.ts": "4d2f5917df6f2ca85c33fa59b390a4a87331812a0a2522528aa9c3a35d7b2229",
+    "codesight-reference-ast.wasm": "31c49dfa343a8fec0578c062a7f5bac013260de3e1852551a020ebc278b3b843"
+  }
+}
