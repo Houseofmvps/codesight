@@ -6,3 +6,12 @@ docs/superpowers/
 package-lock.json
 tests/fixtures/**/.codesight/
 tests/fixtures/**/CODESIGHT.md
+# Fully test-generated fixture directories
+tests/fixtures/dotfolder-*/
+# Generated AI-config outputs written by the test suite
+tests/fixtures/**/CLAUDE.md
+tests/fixtures/**/AGENTS.md
+tests/fixtures/**/codex.md
+tests/fixtures/**/.cursorrules
+tests/fixtures/**/.windsurfrules
+tests/fixtures/**/copilot-instructions.md
