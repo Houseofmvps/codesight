@@ -5,7 +5,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { CodesightConfig } from "./types.js";
+import type { CodesightConfig, NativeAstConfig, NativeLang } from "./types.js";
 
 const CONFIG_FILES = [
   "codesight.config.ts",
@@ -65,7 +65,7 @@ export async function loadConfig(root: string): Promise<CodesightConfig> {
   return {};
 }
 
-function safeParseConfigText(content: string): CodesightConfig {
+export function safeParseConfigText(content: string): CodesightConfig {
   const config: CodesightConfig = {};
   const match = content.match(/export\s+default\s+(\{[\s\S]*\})\s*;?\s*$/m);
   if (!match) return config;
@@ -109,7 +109,38 @@ function safeParseConfigText(content: string): CodesightConfig {
   const ignorePatterns = extractStringArray("ignorePatterns");
   if (ignorePatterns !== undefined) config.ignorePatterns = ignorePatterns;
 
+  // nativeAst: { enabled, languages, pluginDir } — nested object, so it needs a
+  // dedicated extractor (the helpers above only handle flat fields). This keeps
+  // the no-TS-loader fallback a strict superset of the loader-backed paths.
+  const nativeAst = extractNativeAst(body);
+  if (nativeAst !== undefined) config.nativeAst = nativeAst;
+
   return config;
+}
+
+/** Extract a `nativeAst: { ... }` sub-object from a config body without executing it. */
+function extractNativeAst(body: string): NativeAstConfig | undefined {
+  const block = body.match(/\bnativeAst\s*:\s*\{([\s\S]*?)\}/);
+  if (!block) return undefined;
+  const sub = block[1];
+  const cfg: NativeAstConfig = {};
+
+  // enabled: true | false | "strict"
+  const enabled = sub.match(/\benabled\s*:\s*(?:(true|false)|['"`](strict)['"`])/);
+  if (enabled) cfg.enabled = enabled[2] ? "strict" : enabled[1] === "true";
+
+  // languages: ["rust", "go"]
+  const langs = sub.match(/\blanguages\s*:\s*\[([^\]]*?)\]/);
+  if (langs) {
+    const items = langs[1].match(/['"`]([^'"`]+)['"`]/g);
+    if (items) cfg.languages = items.map((s) => s.slice(1, -1)) as NativeLang[];
+  }
+
+  // pluginDir: "..."
+  const pluginDir = sub.match(/\bpluginDir\s*:\s*['"`]([^'"`]+)['"`]/);
+  if (pluginDir) cfg.pluginDir = pluginDir[1];
+
+  return Object.keys(cfg).length > 0 ? cfg : undefined;
 }
 
 async function loadTsConfig(configPath: string, _root: string): Promise<CodesightConfig> {
@@ -137,7 +168,13 @@ async function loadTsConfig(configPath: string, _root: string): Promise<Codesigh
  */
 export function mergeCliConfig(
   config: CodesightConfig,
-  cli: { maxDepth?: number; outputDir?: string; profile?: string; maxTokens?: number }
+  cli: {
+    maxDepth?: number;
+    outputDir?: string;
+    profile?: string;
+    maxTokens?: number;
+    nativeAst?: NativeAstConfig;
+  }
 ): CodesightConfig {
   return {
     ...config,
@@ -145,5 +182,7 @@ export function mergeCliConfig(
     outputDir: cli.outputDir ?? config.outputDir,
     profile: (cli.profile as CodesightConfig["profile"]) ?? config.profile,
     maxTokens: cli.maxTokens ?? config.maxTokens,
+    // Precedence: CLI/env (already merged into cli.nativeAst) > config file.
+    nativeAst: cli.nativeAst ?? config.nativeAst,
   };
 }
