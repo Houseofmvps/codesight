@@ -16,6 +16,7 @@ import { detectOpenAPISpec } from "./detectors/openapi.js";
 import { writeOutput, computeCrudGroups } from "./formatter.js";
 import { resolveNativeAst } from "./ast/native-loader.js";
 import { createBuiltinPlugins } from "./plugins/index.js";
+import { detectNative, mergeNativeRoutes, mergeNativeSchemas } from "./detectors/native.js";
 import { createRequire } from "node:module";
 import type { ScanResult, CodesightConfig } from "./types.js";
 
@@ -72,7 +73,7 @@ export async function scan(
   // diagnostics sink) via reference memoization.
   const nativeResolved = resolveNativeAst(userConfig.nativeAst, project.root);
 
-  const [rawHttpRoutes, schemas, components, libs, configResult, middleware, graph,
+  const [rawHttpRoutes, builtinSchemas, components, libs, configResult, middleware, graph,
          graphqlRoutes, grpcRoutes, wsRoutes, events, openapi] =
     await Promise.all([
       disabled.has("routes") ? Promise.resolve([]) : detectRoutes(files, project, userConfig),
@@ -89,8 +90,19 @@ export async function scan(
       detectOpenAPISpec(root, project),
     ]);
 
+  // Generic language-driven native pass — the single place WASM plugins are
+  // dispatched. Merge into the built-in results (native-preferred; authoritative
+  // languages replace built-ins per file — routes only, see native.ts).
+  const native = await detectNative(files, project, nativeResolved);
+  const httpRoutes = disabled.has("routes")
+    ? rawHttpRoutes
+    : mergeNativeRoutes(rawHttpRoutes, native.routes, nativeResolved, native.registry);
+  const schemas = disabled.has("schema")
+    ? builtinSchemas
+    : mergeNativeSchemas(builtinSchemas, native.schemas);
+
   // Merge OpenAPI routes and schemas if spec found
-  const rawRoutes = [...rawHttpRoutes, ...graphqlRoutes, ...grpcRoutes, ...wsRoutes];
+  const rawRoutes = [...httpRoutes, ...graphqlRoutes, ...grpcRoutes, ...wsRoutes];
   if (openapi.routes.length > 0) {
     if (rawRoutes.length === 0) rawRoutes.push(...openapi.routes);
     const existingModelNames = new Set(schemas.map((m) => m.name.toLowerCase()));
@@ -160,6 +172,7 @@ export async function scan(
     } else {
       console.log(" done");
     }
+    for (const w of nativeResolved.warnings) console.warn(`  Native-AST: ${w}`);
   }
 
   // Step 5: Write output
