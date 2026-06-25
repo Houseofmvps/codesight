@@ -39,34 +39,39 @@ The module is instantiated once per scan and its `parse*` functions are called m
 times (it's a long-lived "reactor", not a per-file process). Compile a library, not
 a command.
 
-> **Scope:** `codesight` invokes a plugin only at its own extraction points and only
-> for a language identifier it recognizes. It provides no WASM-based parsers itself.
-> Where no plugin is configured, it falls back to its built-in extraction. This contract
-> defines the boundary; it does not promise any particular language is wired up.
+> **Scope:** `codesight` ships no parsers itself. Dispatch is **language-driven**: a
+> plugin declares the file extensions it handles (via `describe()`, below), and
+> `codesight` routes matching files to it — so *any* language works, not just the ones
+> with built-in extractors. Where no plugin handles a file, built-in extraction stands.
 
 ---
 
 ## Discovery & naming
 
-A plugin is identified by a language identifier `<lang>`. Per identifier,
-`codesight` looks for a single self-describing module — no sidecar manifest:
+Plugin binaries must match the template (anything else on the path is ignored):
 
 ```
-codesight-<lang>-ast.wasm            # the module (required)
+codesight-<lang>-ast.wasm            # `<lang>` ∈ [a-z0-9_-]+ ; the `-ast` capability namespace is reserved
 ```
 
-The `-ast` segment is the capability namespace (reserved to allow the same plugin
-mechanism to host other capabilities later if/when it becomes beneficial or desirable
-to do so). The module declares its own contract version and capabilities through
-its exports (see below), so there is nothing else to ship or keep in sync.
+The module is **fully self-describing** — no sidecar manifest. Its `describe()`
+export (below) declares the authoritative `languageId` and the file `extensions`
+it parses; the `<lang>` in the filename is only a discovery key + fallback id (if
+`describe().languageId` is set and differs, the declared id wins, with a warning).
+For the built-in language ids (`rust`/`go`/`python`) a default extension map
+(`.rs`/`.go`/`.py`) applies when `describe()` is omitted; **any other language must
+declare `extensions`** or it can't be routed.
 
-Directories are searched in this order; the **first** directory containing a
-matching `.wasm` binary wins (\*nix `PATH`-style waterfall):
+Directories are searched in PATH-style waterfall order:
 
 1. `--plugin-dir <dir>` / `CODESIGHT_PLUGIN_DIR` (relative paths resolve against the project root)
 2. `~/.codesight/plugins`
 3. `${XDG_DATA_HOME:-~/.local/share}/codesight/plugins`
 4. `<codesight install dir>/plugins`
+
+**Precedence:** per language id, the first dir wins (lower dirs shadowed). If two
+*different* languages claim the same extension, an explicitly-named language beats
+an `all`-discovered one, else first-registered wins — with a warning either way.
 
 ---
 
@@ -74,15 +79,24 @@ matching `.wasm` binary wins (\*nix `PATH`-style waterfall):
 
 Native parsing is off unless explicitly enabled. Precedence is `CLI` > `env` > `config file`.
 
-| Mechanism | Example                                                                                                                         |
-|-----------|---------------------------------------------------------------------------------------------------------------------------------|
-| CLI       | `codesight --native-ast` · `codesight --native-ast <langs>` · `codesight --native-ast-strict` · `codesight --plugin-dir ./wasm` |
-| Env       | `CODESIGHT_NATIVE_AST=1` (or `strict`, or a comma list of language identifiers) · `CODESIGHT_PLUGIN_DIR=/path`                  |
-| Config    | `codesight.config.{json,js,ts}` → `{ "nativeAst": { "enabled": true, "languages": ["<lang>"], "pluginDir": "./wasm" } }`        |
+| Mechanism | Example                                                                                                                            |
+|-----------|------------------------------------------------------------------------------------------------------------------------------------|
+| CLI       | `codesight --native-ast` (= all) · `codesight --native-ast=rust,go` · `codesight --native-ast=none` · `codesight --native-ast-strict` · `codesight --plugin-dir ./wasm` |
+| Env       | `CODESIGHT_NATIVE_AST=all` (or `1`/`true`/`strict`/`none`, or a comma list of ids) · `CODESIGHT_PLUGIN_DIR=/path`                  |
+| Config    | `codesight.config.{json,js,ts}` → `{ "nativeAst": { "enabled": true, "languages": ["rust"], "pluginDir": "./wasm" } }`             |
 
-`enabled` may be `true`, `false`, or `"strict"`. Omitting `languages` (or passing
-an empty list) enables every language identifier `codesight` recognizes; supplying a
-list restricts native parsing to those identifiers.
+`enabled` may be `true`, `false`, or `"strict"`. `none` forces off (overriding the
+config file). **Dispatch mode depends on how you enable it:**
+
+- **`all` / bare flag / empty `languages`** → *additive*: every discovered plugin is
+  consulted, and results are **unioned** with the built-in extractors (native wins on
+  a `method:path` / model-name conflict).
+- **An explicit language list** (`--native-ast=rust,go`) → *authoritative*: for files
+  a named plugin handles, its results **replace** the built-in routes from that file
+  (dropping regex over-matches). If the plugin returns nothing for a file the built-in
+  did extract, the built-in stands and a warning is emitted. (Authoritative replacement
+  is route-only — `SchemaModel` carries no file provenance, so schemas are always
+  native-preferred dedup-by-name.)
 
 ---
 
@@ -90,15 +104,13 @@ list restricts native parsing to those identifiers.
 
 The host instantiates every module with a **minimal WASI import object** (Node's
 built-in `node:wasi` — clock/random/exit/stderr only; **no filesystem, no network,
-no env/args**). Pure-compute modules with no imports (Rust/AssemblyScript on
-`wasm32-unknown-unknown`) ignore it; modules whose runtime needs WASI (e.g. Go
-`//go:wasmexport` reactors) get exactly those minimal capabilities. A module that
-exports `_initialize` is initialized before any other export is called. The module
-must not require JS-binding glue or host functions beyond WASI. `node:wasi` is built
-in, so codesight keeps its zero-dependency guarantee.
+no env/args**). Pure-compute modules (Rust/AssemblyScript, no imports) ignore it;
+modules whose runtime needs WASI (e.g. Go `//go:wasmexport` reactors) get exactly
+those minimal capabilities. A reactor that exports `_initialize` is initialized
+before its other exports are called. "Plugins are pure compute" — if a kind ever
+needs project context, it flows through the ABI, not the filesystem.
 
-A conforming module exports a small fixed core plus one optional `parse*` function
-per capability it provides:
+A conforming module exports a small fixed core plus optional capability functions:
 
 | Export            | Signature (wasm types)                | Purpose                                         |
 |-------------------|---------------------------------------|-------------------------------------------------|
@@ -106,6 +118,7 @@ per capability it provides:
 | `alloc`           | `(len: i32) -> i32`                   | reserve `len` bytes, return a pointer           |
 | `dealloc`         | `(ptr: i32, len: i32) -> ()`          | release a prior allocation                      |
 | `contractVersion` | `() -> i32`                           | the contract version this plugin implements     |
+| `describe`        | `() -> i64`                           | *optional* — packed JSON metadata (see below)   |
 | `parseRoutes`     | `(srcPtr: i32, srcLen: i32) -> i64`   | *optional* — extract routes                     |
 | `parseSchemas`    | `(srcPtr: i32, srcLen: i32) -> i64`   | *optional* — extract schema models              |
 | `parseImports`    | `(srcPtr: i32, srcLen: i32) -> i64`   | *optional* — extract imports (defined, not yet dispatched — see below) |
@@ -115,6 +128,20 @@ or whose `contractVersion()` does not equal the host's (currently **1**) — tha
 also makes `contractVersion` a "this is a codesight plugin" marker. **Capability is
 detected by export presence:** a plugin supports a kind iff it exports the matching
 `parse*` function. There are no kind codes and no manifest.
+
+### `describe()` — self-description
+
+Optional. Returns packed `(outPtr << 32) | outLen` pointing at UTF-8 JSON (same
+convention as `parse*`), e.g.:
+
+```jsonc
+{ "languageId": "ruby", "extensions": [".rb", ".rake"] }
+```
+
+The host reads `languageId` (authoritative over the filename) and `extensions` (how
+files are routed to this plugin); other fields are carried but unused for now. A
+plugin for a non-built-in language **must** declare `extensions` here, or it has no
+files to receive.
 
 As WebAssembly text:
 
@@ -286,10 +313,10 @@ from built-in `ast`/`regex` results in the scan summary.
 Implement the module in any toolchain that targets `wasm32` and imports **at most
 `wasi_snapshot_preview1`** (no JS-binding glue, no other host functions). Pure-compute
 languages (Rust/AssemblyScript via `wasm32-unknown-unknown`) need no imports at all;
-full-runtime languages (Go via `GOOS=wasip1 -buildmode=c-shared`) import WASI, which
-the host supplies minimally. The allocator and the per-kind marshalling are
-boilerplate; the only part that changes is your extraction logic. Export only the
-`parse*` functions for the kinds you support.
+full-runtime languages (Go via `GOOS=wasip1 -buildmode=c-shared` + `//go:wasmexport`)
+import WASI, which the host supplies minimally. The allocator and per-kind marshalling
+are boilerplate; only your extraction logic changes. Export `describe()` (for routing)
+plus the `parse*` functions for the kinds you support.
 
 Required exports and their behavior, in pseudocode:
 
