@@ -1,6 +1,8 @@
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, copyFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 // ABI conformance test for the reference WASM plugin.
@@ -28,9 +30,14 @@ const SRC = [
 ].join("\n");
 
 async function loadModules() {
-  const { loadPlugin, bindExports, resetNativePluginProvider } = await import("../dist/wasm/plugin-host.js");
-  const { resolveNativeAst, nativePluginFor } = await import("../dist/ast/native-loader.js");
-  return { loadPlugin, bindExports, resetNativePluginProvider, resolveNativeAst, nativePluginFor };
+  const { loadPlugin, bindExports, listPluginFiles, resetNativePluginProvider } = await import("../dist/wasm/plugin-host.js");
+  const { resolveNativeAst, nativePluginFor, buildNativeRegistry } = await import("../dist/ast/native-loader.js");
+  const { detectNative } = await import("../dist/detectors/native.js");
+  const { detectProject } = await import("../dist/scanner.js");
+  return {
+    loadPlugin, bindExports, listPluginFiles, resetNativePluginProvider,
+    resolveNativeAst, nativePluginFor, buildNativeRegistry, detectNative, detectProject,
+  };
 }
 
 describe("reference WASM plugin — raw ABI (plugin-host)", () => {
@@ -152,5 +159,49 @@ describe("plugin-host — contractVersion gating (bindExports)", () => {
   it("rejects a module missing core exports (memory)", async () => {
     const plugin = mods.bindExports({ alloc: () => 0, dealloc: noop, contractVersion: () => 1 });
     assert.equal(plugin, null);
+  });
+});
+
+describe("native generalization — discovery + generic pass (reference plugin)", () => {
+  let mods: any;
+  before(async () => { mods = await loadModules(); mods.resetNativePluginProvider(); });
+
+  const MARKERS = ["route GET /health", "model User id email", "import ./db"].join("\n");
+
+  it("reads describe() metadata (languageId + extensions)", () => {
+    const p = mods.loadPlugin("reference", [PLUGIN_DIR]);
+    assert.ok(p, "reference plugin should load");
+    assert.deepEqual(p.metadata, { languageId: "reference", extensions: [".ref"] });
+  });
+
+  it("buildNativeRegistry routes the declared extension to the plugin (explicit)", () => {
+    const resolved = mods.resolveNativeAst({ enabled: true, languages: ["reference"], pluginDir: PLUGIN_DIR }, PLUGIN_DIR);
+    const reg = mods.buildNativeRegistry(resolved);
+    const entry = reg.byExt.get(".ref");
+    assert.ok(entry, "expected .ref → reference in the registry");
+    assert.equal(entry.lang, "reference");
+    assert.equal(entry.authoritative, true); // explicit list ⇒ authoritative
+  });
+
+  it("the generic pass dispatches a .ref file by extension", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "cs-gen-"));
+    writeFileSync(join(tmp, "thing.ref"), MARKERS);
+    const resolved = mods.resolveNativeAst({ enabled: true, languages: ["reference"], pluginDir: PLUGIN_DIR }, tmp);
+    const { routes, schemas } = await mods.detectNative([join(tmp, "thing.ref")], { root: tmp }, resolved);
+    assert.deepEqual(routes.map((r: any) => `${r.method} ${r.path}`), ["GET /health"]);
+    assert.ok(routes.every((r: any) => r.confidence === "native" && r.framework === "unknown"));
+    assert.deepEqual(schemas.map((s: any) => s.name), ["User"]);
+  });
+
+  it("`all` mode discovers the plugin by globbing the plugin dir", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "cs-plugins-"));
+    copyFileSync(join(PLUGIN_DIR, "codesight-reference-ast.wasm"), join(tmp, "codesight-reference-ast.wasm"));
+    // no `languages` ⇒ all/additive; the override dir is searched first
+    const resolved = mods.resolveNativeAst({ enabled: true, pluginDir: tmp }, tmp);
+    const reg = mods.buildNativeRegistry(resolved);
+    const entry = reg.byExt.get(".ref");
+    assert.ok(entry, "all-mode should discover the reference plugin");
+    assert.equal(entry.lang, "reference");
+    assert.equal(entry.authoritative, false); // all ⇒ additive
   });
 });
