@@ -40,8 +40,8 @@ function printHelp() {
     --since <ref>            Show only routes from files changed since git ref/commit
     --mode <mode>            Scan mode: code (default) | knowledge (map .md notes)
     --refresh [pkg]          Rebuild monorepo package context (all or named package)
-    --native-ast [langs]     Use WASM AST plugins when present (optional list: rust,go,python)
-    --native-ast-strict      Like --native-ast, but report + fail if a plugin is missing
+    --native-ast[=langs]     Use WASM AST plugins (=all default, =none to force off, or =rust,go,…)
+    --native-ast-strict      Like --native-ast, but report + fail if a named plugin is missing
     --plugin-dir <dir>       Extra directory to search for WASM plugins
     -v, --version            Show version
     -h, --help               Show this help
@@ -80,52 +80,73 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-const KNOWN_NATIVE_LANGS: NativeLang[] = ["rust", "go", "python"];
-
-/** True when `token` is a comma list of known native languages (and only those). */
-function isLangList(token: string): boolean {
-  if (!token || token.startsWith("-")) return false;
-  return token
-    .split(",")
-    .every((t) => (KNOWN_NATIVE_LANGS as string[]).includes(t.trim().toLowerCase()));
-}
-
+/** Split a comma list of language ids → normalized string[]. */
 function parseLangs(token: string): NativeLang[] {
   return token
     .split(",")
     .map((t) => t.trim().toLowerCase())
-    .filter(Boolean) as NativeLang[];
+    .filter(Boolean);
 }
 
-/** Parse CODESIGHT_NATIVE_AST: "1"|"true"|"on"|"strict"|"rust,go" → partial config. */
+/** Accumulated native-AST CLI intent. `none` forces off; empty `languages` = all. */
+interface NativeAstCli {
+  enabled?: boolean | "strict";
+  none?: boolean;
+  languages?: NativeLang[];
+}
+
+/**
+ * Apply one `--native-ast[=val]` / `--native-ast-strict[=val]` flag.
+ * `val`: "" or "all" → all; "none" → force off; otherwise a comma list of ids.
+ */
+function applyNativeAstArg(cli: NativeAstCli, val: string, strict: boolean): void {
+  const v = val.trim().toLowerCase();
+  if (v === "none") {
+    cli.none = true;
+    return;
+  }
+  cli.enabled = cli.enabled === "strict" || strict ? "strict" : true;
+  if (v !== "" && v !== "all") cli.languages = parseLangs(v);
+}
+
+/** Parse CODESIGHT_NATIVE_AST: ""|none|off|0|false → off; 1|true|on|all → all; strict; or a comma id list. */
 function parseNativeAstEnv(
   v: string | undefined
 ): { enabled: boolean | "strict"; languages?: NativeLang[] } | undefined {
   if (!v) return undefined;
   const t = v.trim().toLowerCase();
-  if (t === "" || t === "0" || t === "false" || t === "off") return undefined;
+  if (t === "") return undefined;
+  if (t === "0" || t === "false" || t === "off" || t === "none") return { enabled: false };
   if (t === "strict") return { enabled: "strict" };
-  if (t === "1" || t === "true" || t === "on") return { enabled: true };
-  if (isLangList(t)) return { enabled: true, languages: parseLangs(t) };
-  return undefined;
+  if (t === "1" || t === "true" || t === "on" || t === "all") return { enabled: true };
+  const langs = parseLangs(t);
+  return langs.length ? { enabled: true, languages: langs } : undefined;
 }
 
-/** Merge native-AST CLI flags with env vars (CLI wins per field). */
-function resolveNativeAstCli(
-  cliEnabled: boolean | "strict" | undefined,
-  cliLangs: NativeLang[] | undefined,
-  cliPluginDir: string
-): NativeAstConfig | undefined {
-  const env = parseNativeAstEnv(process.env.CODESIGHT_NATIVE_AST);
-  const enabled = cliEnabled ?? env?.enabled;
-  if (!enabled) return undefined;
+/** Merge native-AST CLI flags with env vars into a config (CLI > env > config file). */
+function resolveNativeAstCli(cli: NativeAstCli, cliPluginDir: string): NativeAstConfig | undefined {
+  const pickDir = (cfg: NativeAstConfig) => {
+    const dir = cliPluginDir || process.env.CODESIGHT_PLUGIN_DIR;
+    if (dir) cfg.pluginDir = dir;
+    return cfg;
+  };
 
-  const cfg: NativeAstConfig = { enabled };
-  const languages = cliLangs ?? env?.languages;
-  if (languages && languages.length) cfg.languages = languages;
-  const dir = cliPluginDir || process.env.CODESIGHT_PLUGIN_DIR;
-  if (dir) cfg.pluginDir = dir;
-  return cfg;
+  if (cli.none) return { enabled: false }; // explicit off, overrides env + config file
+  if (cli.enabled) {
+    const cfg: NativeAstConfig = { enabled: cli.enabled };
+    if (cli.languages?.length) cfg.languages = cli.languages;
+    return pickDir(cfg);
+  }
+
+  const env = parseNativeAstEnv(process.env.CODESIGHT_NATIVE_AST);
+  if (env) {
+    if (env.enabled === false) return { enabled: false };
+    const cfg: NativeAstConfig = { enabled: env.enabled };
+    if (env.languages?.length) cfg.languages = env.languages;
+    return pickDir(cfg);
+  }
+
+  return undefined; // no CLI/env opinion → config file decides
 }
 
 async function installGitHook(root: string, outputDirName: string) {
@@ -319,8 +340,7 @@ async function main() {
   let mode = "code";
   let doRefresh = false;
   let refreshPackage = "";
-  let nativeAstEnabled: boolean | "strict" | undefined;
-  let nativeAstLangs: NativeLang[] | undefined;
+  const nativeAstCli: NativeAstCli = {};
   let pluginDir = "";
 
   for (let i = 0; i < args.length; i++) {
@@ -367,17 +387,10 @@ async function main() {
       if (args[i + 1] && !args[i + 1].startsWith("-")) {
         refreshPackage = args[++i];
       }
-    } else if (arg === "--native-ast") {
-      if (nativeAstEnabled !== "strict") nativeAstEnabled = true;
-      // Optional next token: a comma list of known languages (must not swallow
-      // the target directory, e.g. `--native-ast ./project`).
-      const next = args[i + 1];
-      if (next && isLangList(next)) {
-        nativeAstLangs = parseLangs(next);
-        i++;
-      }
-    } else if (arg === "--native-ast-strict") {
-      nativeAstEnabled = "strict";
+    } else if (arg === "--native-ast" || arg.startsWith("--native-ast=")) {
+      applyNativeAstArg(nativeAstCli, arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : "", false);
+    } else if (arg === "--native-ast-strict" || arg.startsWith("--native-ast-strict=")) {
+      applyNativeAstArg(nativeAstCli, arg.includes("=") ? arg.slice(arg.indexOf("=") + 1) : "", true);
     } else if (arg === "--plugin-dir" && args[i + 1]) {
       pluginDir = args[++i];
     } else if (!arg.startsWith("-")) {
@@ -403,7 +416,7 @@ async function main() {
 
   // Resolve native-AST settings: CLI takes precedence over env, both over the
   // config file (merged below). Undefined unless explicitly enabled somewhere.
-  const nativeAst = resolveNativeAstCli(nativeAstEnabled, nativeAstLangs, pluginDir);
+  const nativeAst = resolveNativeAstCli(nativeAstCli, pluginDir);
 
   // Load config file
   const fileConfig = await loadConfig(root);

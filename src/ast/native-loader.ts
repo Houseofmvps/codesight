@@ -23,17 +23,25 @@ import type {
   ORM,
   Framework,
 } from "../types.js";
-import { loadPlugin } from "../wasm/plugin-host.js";
+import { loadPlugin, listPluginFiles, type LoadedPlugin } from "../wasm/plugin-host.js";
 
 /** Effective, resolved native-AST settings for one scan. */
 export interface NativeAstResolved {
   mode: false | "on" | "strict";
-  /** Languages native parsing applies to. Empty set = all languages. */
+  /** Languages native parsing applies to. Empty set = all discovered languages. */
   languages: Set<NativeLang>;
+  /**
+   * True when an explicit language list was given (so those languages are
+   * AUTHORITATIVE — they preempt built-in extraction). Empty list / "all" =
+   * additive. Equivalent to `languages.size > 0`, captured for clarity.
+   */
+  authoritative: boolean;
   /** Plugin directories searched in order (PATH-style waterfall). */
   pluginDirs: string[];
   /** Shared, mutable sink for strict-mode diagnostics. */
   diagnostics: NativeDiagnostic[];
+  /** Shared, mutable sink for non-fatal warnings (collisions, name mismatch, etc.). */
+  warnings: string[];
 }
 
 /** A plugin adapted to codesight's domain types. Methods return null when the
@@ -47,8 +55,18 @@ export interface NativePlugin {
 const DISABLED: NativeAstResolved = {
   mode: false,
   languages: new Set(),
+  authoritative: false,
   pluginDirs: [],
   diagnostics: [],
+  warnings: [],
+};
+
+/** Built-in default extensions for the historically-known language ids, used when
+ *  a plugin omits `describe().extensions`. New languages must self-report. */
+const DEFAULT_EXTENSIONS: Record<string, string[]> = {
+  rust: [".rs"],
+  go: [".go"],
+  python: [".py"],
 };
 
 // Memoized by the `nativeAst` config object reference. scan() passes the same
@@ -70,11 +88,14 @@ export function resolveNativeAst(
   const cached = resolvedCache.get(cfg);
   if (cached) return cached;
 
+  const languages = new Set(cfg.languages ?? []);
   const resolved: NativeAstResolved = {
     mode: cfg.enabled === "strict" ? "strict" : "on",
-    languages: new Set(cfg.languages ?? []),
+    languages,
+    authoritative: languages.size > 0,
     pluginDirs: defaultPluginDirs(projectRoot, cfg.pluginDir),
     diagnostics: [],
+    warnings: [],
   };
   resolvedCache.set(cfg, resolved);
   return resolved;
@@ -106,6 +127,94 @@ export function nativeEnabledFor(r: NativeAstResolved, lang: NativeLang): boolea
 
 export function isStrict(r: NativeAstResolved): boolean {
   return r.mode === "strict";
+}
+
+/** A language's adapted plugin + whether it preempts built-in extraction. */
+export interface NativeRegistryEntry {
+  lang: string;
+  authoritative: boolean;
+  plugin: NativePlugin;
+}
+
+/** Extension → owning plugin, for one scan. */
+export interface NativeRegistry {
+  /** Lowercased extension (leading dot) → the plugin that handles it. */
+  byExt: Map<string, NativeRegistryEntry>;
+}
+
+/**
+ * Build the extension→plugin registry: target the explicit languages (or
+ * enumerate all discovered plugins for "all"), resolve each language's
+ * identity (`describe().languageId` wins over the filename) and extensions
+ * (`describe().extensions`, else the built-in default map), and route extensions
+ * with the collision rule. Records strict diagnostics for enabled-but-unavailable
+ * or unroutable languages, and warnings for name mismatches / extension collisions.
+ */
+export function buildNativeRegistry(r: NativeAstResolved): NativeRegistry {
+  const byExt = new Map<string, NativeRegistryEntry>();
+  if (r.mode === false) return { byExt };
+
+  const candidates = r.authoritative
+    ? [...r.languages]
+    : listPluginFiles(r.pluginDirs).map((f) => f.lang);
+
+  for (const requested of candidates) {
+    const loaded = loadPlugin(requested, r.pluginDirs);
+    if (!loaded) {
+      if (r.mode === "strict") recordUnavailableLang(r, requested);
+      continue;
+    }
+
+    // `describe().languageId` is authoritative for identity; filename is fallback.
+    const reported = loaded.metadata?.languageId;
+    const lang = reported && reported.length > 0 ? reported : requested;
+    if (reported && reported.length > 0 && reported !== requested) {
+      addWarning(
+        r,
+        `plugin "codesight-${requested}-ast.wasm" self-reports languageId "${reported}" — honoring "${reported}" (rename the file to match for explicit --native-ast=${reported})`
+      );
+      // In explicit mode the user asked for `requested`; a file claiming a
+      // different id doesn't satisfy that request.
+      if (r.authoritative && !r.languages.has(lang)) {
+        if (r.mode === "strict") recordUnavailableLang(r, requested);
+        continue;
+      }
+    }
+
+    const declared = loaded.metadata?.extensions;
+    const exts = (declared && declared.length > 0 ? declared : DEFAULT_EXTENSIONS[lang]) ?? [];
+    if (exts.length === 0) {
+      if (r.mode === "strict") {
+        r.diagnostics.push({
+          lang,
+          kind: "routes",
+          reason: "no extensions declared (describe().extensions is required for non-built-in languages)",
+        });
+      }
+      continue;
+    }
+
+    const entry: NativeRegistryEntry = { lang, authoritative: r.authoritative, plugin: adaptPlugin(loaded) };
+    for (const raw of exts) {
+      const ext = (raw.startsWith(".") ? raw : "." + raw).toLowerCase();
+      const existing = byExt.get(ext);
+      if (!existing || existing.lang === entry.lang) {
+        byExt.set(ext, entry);
+        continue;
+      }
+      const winner = resolveCollision(existing, entry);
+      byExt.set(ext, winner);
+      addWarning(r, `extension "${ext}" claimed by both "${existing.lang}" and "${entry.lang}" — using "${winner.lang}"`);
+    }
+  }
+
+  return { byExt };
+}
+
+/** Collision tiebreak: explicit (authoritative) beats discovered; else first-registered wins. */
+function resolveCollision(existing: NativeRegistryEntry, candidate: NativeRegistryEntry): NativeRegistryEntry {
+  if (candidate.authoritative && !existing.authoritative) return candidate;
+  return existing;
 }
 
 /**
@@ -162,6 +271,17 @@ function recordUnavailable(r: NativeAstResolved, lang: NativeLang, kind: NativeK
   if (!dup) r.diagnostics.push({ lang, kind, reason: "plugin unavailable" });
 }
 
+/** Language-level "no plugin found" diagnostic (deduped per language). */
+function recordUnavailableLang(r: NativeAstResolved, lang: NativeLang): void {
+  const dup = r.diagnostics.some((d) => d.lang === lang && !d.file && d.reason === "plugin unavailable");
+  if (!dup) r.diagnostics.push({ lang, kind: "routes", reason: "plugin unavailable" });
+}
+
+/** Append a non-fatal warning (deduped). */
+function addWarning(r: NativeAstResolved, message: string): void {
+  if (!r.warnings.includes(message)) r.warnings.push(message);
+}
+
 /**
  * Build a domain-typed adapter around the raw plugin, or null if unavailable.
  * A method is exposed only when the plugin exports the matching capability, so
@@ -170,7 +290,12 @@ function recordUnavailable(r: NativeAstResolved, lang: NativeLang, kind: NativeK
 function getNativePlugin(lang: NativeLang, r: NativeAstResolved): NativePlugin | null {
   const loaded = loadPlugin(lang, r.pluginDirs);
   if (!loaded) return null;
+  return adaptPlugin(loaded);
+}
 
+/** Map a raw LoadedPlugin to codesight's domain types. A method is exposed only
+ *  when the plugin exports the matching capability (so callers can detect it). */
+function adaptPlugin(loaded: LoadedPlugin): NativePlugin {
   const np: NativePlugin = {};
 
   if (loaded.routes) {

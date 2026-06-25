@@ -1,7 +1,7 @@
 {
   "algorithm": "sha256",
   "files": {
-    "assembly/index.ts": "4d2f5917df6f2ca85c33fa59b390a4a87331812a0a2522528aa9c3a35d7b2229",
-    "codesight-reference-ast.wasm": "31c49dfa343a8fec0578c062a7f5bac013260de3e1852551a020ebc278b3b843"
+    "assembly/index.ts": "7dbd49e902cbc8c51a7aa19010a4893f1aab7c0ddba32ad5219cbfe988545ee3",
+    "codesight-reference-ast.wasm": "a8a0429b4a72f6937d26d455b60593b7aa8593a937c65c7d1f18dda20af484ad"
   }
 }

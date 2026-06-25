@@ -232,11 +232,29 @@ export interface CodesightConfig {
   rokuScreenHelpers?: string[];
 }
 
-/** Native language to which a WASM AST plugin applies. */
-export type NativeLang = "rust" | "go" | "python";
+/**
+ * A native language identifier. Open-ended: a plugin declares the language it
+ * handles (via `describe().languageId`, else its filename), so any string is a
+ * valid id — `rust`/`go`/`python` are merely the ids with built-in extractors.
+ */
+export type NativeLang = string;
 
 /** Extraction capability a native plugin can provide. */
 export type NativeKind = "routes" | "schemas" | "imports";
+
+/**
+ * Optional self-reported plugin metadata (from a `describe()` export). The host
+ * consumes `languageId` + `extensions`; other fields are carried but unused for
+ * now (e.g. `frameworks`, reserved for future framework labeling).
+ */
+export interface PluginMetadata {
+  /** Authoritative language id when present/non-empty (else the filename `<lang>`). */
+  languageId?: string;
+  /** File extensions this plugin parses, e.g. [".rs"]. Required for non-built-in languages. */
+  extensions?: string[];
+  /** Frameworks the plugin can label results with — carried, not yet consumed. */
+  frameworks?: string[];
+}
 
 export interface NativeAstConfig {
   /**

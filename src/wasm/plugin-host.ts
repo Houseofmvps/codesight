@@ -26,10 +26,10 @@
  * instantiated once and the parse functions are called per file — a reactor,
  * not a per-file process.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import type { NativeLang } from "../types.js";
+import type { NativeLang, PluginMetadata } from "../types.js";
 
 // `node:wasi` is loaded lazily (below) rather than via a static import: importing
 // it emits a one-time ExperimentalWarning at module-load, which would fire on
@@ -52,10 +52,51 @@ export interface LoadedPlugin {
   routes?(source: string): unknown;
   schemas?(source: string): unknown;
   imports?(source: string): unknown;
+  /** Self-reported metadata from the optional `describe()` export (if any). */
+  metadata?: PluginMetadata;
 }
 
 /** Resolves a language to a LoadedPlugin (or null if none found). Swappable for tests. */
 export type PluginProvider = (lang: NativeLang, pluginDirs: string[]) => LoadedPlugin | null;
+
+/** A plugin binary found on the search path: its filename language id + path. */
+export interface PluginFile {
+  /** The `<lang>` captured from the filename — a discovery hint / fallback id. */
+  lang: string;
+  path: string;
+}
+
+/** Only files matching this template are ever considered plugins. */
+const PLUGIN_FILENAME = /^codesight-([a-z0-9_-]+)-ast\.wasm$/;
+
+/**
+ * Enumerate plugin binaries across the search path (for `all` mode). Returns one
+ * entry per filename language id, first-match-wins by waterfall dir order (lower
+ * dirs shadowed), deterministic within a dir. Only template-matching files are
+ * returned — arbitrary `.wasm` is ignored. Filesystem-only (a test provider is
+ * for load-by-id, not enumeration).
+ */
+export function listPluginFiles(pluginDirs: string[]): PluginFile[] {
+  const seen = new Set<string>();
+  const out: PluginFile[] = [];
+  for (const dir of pluginDirs) {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir).sort();
+    } catch {
+      continue; // dir doesn't exist / unreadable
+    }
+    for (const name of entries) {
+      const m = PLUGIN_FILENAME.exec(name);
+      if (!m) continue;
+      const lang = m[1];
+      if (seen.has(lang)) continue; // waterfall first-wins
+      seen.add(lang);
+      out.push({ lang, path: join(dir, name) });
+    }
+  }
+  return out;
+}
 
 // ─── Test seam ───
 let providerOverride: PluginProvider | null = null;
@@ -148,6 +189,7 @@ interface WasmExports {
   alloc(len: number): number;
   dealloc(ptr: number, len: number): void;
   contractVersion(): number;
+  describe?(): bigint;
   parseRoutes?(srcPtr: number, srcLen: number): bigint;
   parseSchemas?(srcPtr: number, srcLen: number): bigint;
   parseImports?(srcPtr: number, srcLen: number): bigint;
@@ -176,25 +218,14 @@ export function bindExports(rawExports: unknown): LoadedPlugin | null {
   const dec = new TextDecoder();
   const enc = new TextEncoder();
 
-  const bind = (fn: (p: number, l: number) => bigint) => (source: string): unknown => {
-    const bytes = enc.encode(source);
-    const ptr = ex.alloc(bytes.length) >>> 0;
-    // Re-acquire the view after alloc — memory.grow detaches the ArrayBuffer.
-    new Uint8Array(ex.memory.buffer, ptr, bytes.length).set(bytes);
-
-    let packed: bigint;
-    try {
-      packed = fn(ptr, bytes.length); // may trap → throws
-    } finally {
-      ex.dealloc(ptr, bytes.length);
-    }
-
+  // Read a packed (outPtr<<32)|outLen return value into parsed JSON, freeing the
+  // output buffer. Returns null on an empty result or invalid JSON.
+  const readPacked = (packed: bigint): unknown => {
     const p = BigInt(packed);
     const outPtr = Number(BigInt.asUintN(32, p >> 32n));
     const outLen = Number(BigInt.asUintN(32, p));
     if (outLen === 0) return null;
-
-    // Re-acquire again — parse may have grown memory while building output.
+    // Re-acquire the view — the call may have grown memory (detaches ArrayBuffer).
     const json = dec.decode(new Uint8Array(ex.memory.buffer, outPtr, outLen));
     ex.dealloc(outPtr, outLen);
     try {
@@ -204,9 +235,35 @@ export function bindExports(rawExports: unknown): LoadedPlugin | null {
     }
   };
 
+  const bind = (fn: (p: number, l: number) => bigint) => (source: string): unknown => {
+    const bytes = enc.encode(source);
+    const ptr = ex.alloc(bytes.length) >>> 0;
+    // Re-acquire the view after alloc — memory.grow detaches the ArrayBuffer.
+    new Uint8Array(ex.memory.buffer, ptr, bytes.length).set(bytes);
+    let packed: bigint;
+    try {
+      packed = fn(ptr, bytes.length); // may trap → throws
+    } finally {
+      ex.dealloc(ptr, bytes.length);
+    }
+    return readPacked(packed);
+  };
+
   const plugin: LoadedPlugin = {};
   if (typeof ex.parseRoutes === "function") plugin.routes = bind(ex.parseRoutes);
   if (typeof ex.parseSchemas === "function") plugin.schemas = bind(ex.parseSchemas);
   if (typeof ex.parseImports === "function") plugin.imports = bind(ex.parseImports);
+
+  // Optional self-description (no input). Carried for discovery/routing; a plugin
+  // that omits it falls back to its filename id + a default extension map.
+  if (typeof ex.describe === "function") {
+    try {
+      const meta = readPacked(ex.describe());
+      if (meta && typeof meta === "object") plugin.metadata = meta as PluginMetadata;
+    } catch {
+      /* ignore a broken describe() — treat as no metadata */
+    }
+  }
+
   return plugin;
 }

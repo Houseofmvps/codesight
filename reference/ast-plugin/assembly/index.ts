@@ -26,6 +26,11 @@ export function contractVersion(): i32 {
   return 1;
 }
 
+/** Optional self-description: language id + the extensions this plugin parses. */
+export function describe(): i64 {
+  return emit("{\"languageId\":\"reference\",\"extensions\":[\".ref\"]}");
+}
+
 // ─── ABI: memory management ───
 
 export function alloc(len: i32): i32 {
