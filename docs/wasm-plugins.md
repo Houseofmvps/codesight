@@ -18,6 +18,7 @@ This document is the contract a plugin must satisfy. It covers:
 - [Fallback & strict semantics](#fallback--strict-semantics)
 - [Plugin skeleton](#plugin-skeleton)
 - [Building & testing locally](#building--testing-locally)
+- [Releases](#releases)
 - [Versioning](#versioning)
 
 ---
@@ -370,6 +371,57 @@ In the scan summary, native results appear as e.g.
 `plugin unavailable`, the `.wasm` wasn't found on the search path or its
 `contractVersion()` didn't match; if it reports a per-file reason, a `parse*`
 function trapped on that file.
+
+---
+
+## Releases
+
+`codesight`'s npm package ships **no** plugins — but the project maintains a small
+set of reference implementations under [`plugins/ast/`](../plugins/ast) and publishes
+them as **prebuilt release assets**, so you don't have to set up a Rust/Go toolchain
+to use them:
+
+| Asset                        | Language | Parser                                                            |
+|------------------------------|----------|-------------------------------------------------------------------|
+| `codesight-rust-ast.wasm`    | Rust     | [`syn`](https://docs.rs/syn)                                      |
+| `codesight-python-ast.wasm`  | Python   | [`ruff`](https://github.com/astral-sh/ruff) (`ruff_python_ast`)   |
+| `codesight-go-ast.wasm`      | Go       | stdlib `go/parser`                                                |
+
+They are optional and opt-in; with none installed, `codesight` behaves exactly as
+its built-in extractors always have.
+
+**Built in CI, not in this package.** The [`ast-plugins`](../.github/workflows/ast-plugins.yml)
+workflow compiles each plugin from source, smoke-tests it against the host ABI, and
+attaches the `.wasm` files plus a `SHA256SUMS` manifest to a GitHub Release. Because
+WebAssembly is platform-independent, one artifact per plugin runs on every OS and
+architecture — there are no per-platform downloads.
+
+**Independent versioning.** Plugins are released on their own `plugins-v*` tags,
+decoupled from `codesight`'s npm version. Compatibility is governed solely by the ABI
+[`contractVersion()`](#versioning): any plugin built for the host's contract works,
+and one built for an older contract is cleanly skipped.
+
+**Installing a released plugin:**
+
+```bash
+mkdir -p ~/.codesight/plugins
+cd ~/.codesight/plugins
+
+# Download the asset(s) you want from the GitHub Release — already named to match the
+# discovery template (no renaming needed) — plus the checksum manifest.
+curl -LO https://github.com/Houseofmvps/codesight/releases/download/<tag>/codesight-rust-ast.wasm
+curl -LO https://github.com/Houseofmvps/codesight/releases/download/<tag>/SHA256SUMS
+
+# Verify integrity before trusting the binary.
+sha256sum --ignore-missing -c SHA256SUMS
+
+# Enable it (an explicit language list is authoritative for that language's files).
+codesight --native-ast=rust ./my-project
+```
+
+Dropped into any directory on the [discovery waterfall](#discovery--naming), the
+plugin is picked up automatically; `--plugin-dir <dir>` points at an arbitrary
+location instead.
 
 ---
 
