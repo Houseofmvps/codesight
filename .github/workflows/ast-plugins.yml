@@ -1,0 +1,186 @@
+---
+name: ast-plugins
+
+# Builds the native-AST WASM plugins (Rust/syn, Python/ruff, Go/go-parser) from
+# the source under plugins/ast, smoke-tests each against the host ABI, and — on a
+# `plugins-v*` tag — publishes the .wasm files (+ SHA256SUMS) as release assets.
+#
+# The plugins are a self-contained, polyglot "closed box": the Node/TS package
+# neither builds nor depends on them (they're excluded from the npm tarball).
+# This workflow is the ONLY thing that compiles them, so it runs on every PR that
+# touches plugins/ast to guard against source rot. wasm is platform-independent,
+# so one artifact per plugin serves every OS/arch — no build matrix needed.
+#
+# Compatibility is governed by the ABI `contractVersion()`, not `codesight`'s npm
+# version, so plugins are released independently via their own `plugins-v*` tags.
+#
+# Note: Cargo.lock is committed and `cargo build --locked` enforces it, so Rust
+# builds are reproducible (the ruff git rev is pinned; the lockfile freezes all
+# transitive deps) and CI fails if the lockfile is stale.
+
+on:
+  pull_request:
+    paths:
+      - plugins/ast/**
+      - .github/workflows/ast-plugins.yml
+
+  push:
+    tags:
+      - plugins-v*
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & smoke-test plugins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust (wasm32-unknown-unknown)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: plugins/ast
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false # stdlib-only module, no go.sum to key a dependency cache on
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node deps & build host
+        run: |
+          pnpm install
+          pnpm build
+
+      # warnings = "deny" is wired into each crate, so any warning fails here.
+      - name: Build Rust plugins (syn / ruff → wasm)
+        working-directory: plugins/ast
+        run: cargo build --locked --release --target wasm32-unknown-unknown
+
+      # -ldflags="-s -w" drops the symbol table and DWARF (Go has no `strip = true`
+      # equivalent); the wasm-opt pass below shrinks all three further.
+      - name: Build Go plugin (go/parser → wasm)
+        working-directory: plugins/ast/golang
+        run: GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -ldflags="-s -w" -o codesight-go-ast.wasm .
+
+      # Stage under the host's discovery filename template (^codesight-<lang>-ast.wasm$).
+      # cargo emits underscores (codesight_rust_ast.wasm) and forbids hyphens in lib
+      # target names, so the rename lives here in CI — never in the repo build.
+      - name: Stage artifacts
+        run: >-
+          mkdir -p dist-plugins;
+          cp
+          plugins/ast/target/wasm32-unknown-unknown/release/codesight_rust_ast.wasm
+          dist-plugins/codesight-rust-ast.wasm;
+          cp
+          plugins/ast/target/wasm32-unknown-unknown/release/codesight_python_ast.wasm
+          dist-plugins/codesight-python-ast.wasm;
+          cp
+          plugins/ast/golang/codesight-go-ast.wasm
+          dist-plugins/codesight-go-ast.wasm;
+          ls -la dist-plugins
+
+      - name: Install wasm-opt (Binaryen)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      # WASM-specific whole-module size pass. -Oz optimizes for size. The toolchains
+      # emit no target_features section but do use bulk-memory (memory.copy/fill), so
+      # we enable exactly the post-MVP features they need — all long supported by the
+      # Node host's V8. The smoke test below runs against these optimized binaries,
+      # so we validate exactly what ships.
+      - name: Optimize wasm (wasm-opt -Oz)
+        working-directory: dist-plugins
+        run: |
+          for f in *.wasm; do
+            before=$(wc -c < "$f")
+            wasm-opt -Oz \
+              --enable-bulk-memory --enable-sign-ext \
+              --enable-mutable-globals --enable-nontrapping-float-to-int \
+              "$f" -o "$f"
+            echo "$f: ${before} -> $(wc -c < "$f") bytes"
+          done
+
+      # Load each optimized plugin through the real host and round-trip a fixture to
+      # catch host<->plugin drift bidirectionally (mirrors the reference-plugin guard).
+      - name: Smoke-test ABI against the host
+        env:
+          PLUGIN_DIR: dist-plugins
+        run: |
+          cat > "${RUNNER_TEMP}/smoke.mjs" <<'JS'
+          import assert from 'node:assert/strict';
+          import { pathToFileURL } from 'node:url';
+
+          const host = pathToFileURL(`${process.cwd()}/dist/wasm/plugin-host.js`).href;
+          const { loadPlugin } = await import(host);
+          const dir = process.env.PLUGIN_DIR;
+
+          const fixtures = {
+            rust: '#[get("/health")]\nfn handler() {}',
+            python: 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/health")\ndef handler(): ...',
+            go: 'package main\nfunc register(r *gin.Engine) { r.GET("/health", nil) }',
+          };
+
+          let failed = 0;
+          for (const [lang, src] of Object.entries(fixtures)) {
+            try {
+              const plugin = loadPlugin(lang, [dir]);
+              assert.ok(plugin, `${lang}: failed to load`);
+              assert.equal(plugin.metadata?.languageId, lang, `${lang}: describe() languageId mismatch`);
+              const routes = plugin.routes?.(src) ?? [];
+              assert.ok(routes.length > 0, `${lang}: expected at least one route from the fixture`);
+              console.log(`ok: ${lang} — ${routes.length} route(s), languageId=${plugin.metadata.languageId}`);
+            } catch (error) {
+              console.error(`FAIL: ${error.message}`);
+              failed = 1;
+            }
+          }
+          process.exit(failed);
+          JS
+          node "${RUNNER_TEMP}/smoke.mjs"
+
+      - name: Generate checksums
+        working-directory: dist-plugins
+        run: sha256sum *.wasm | tee SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ast-plugins
+          path: dist-plugins/
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/plugins-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ast-plugins
+          path: dist-plugins
+
+      - name: Publish to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-plugins/*.wasm
+            dist-plugins/SHA256SUMS
