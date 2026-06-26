@@ -1,5 +1,12 @@
 # Libraries
 
+- `reference/ast-plugin/assembly/index.ts`
+  - function contractVersion: () => i32
+  - function alloc: (len) => i32
+  - function dealloc: (ptr, len) => void
+  - function parseRoutes: (srcPtr, srcLen) => i64
+  - function parseSchemas: (srcPtr, srcLen) => i64
+  - function parseImports: (srcPtr, srcLen) => i64
 - `src/ast/extract-android.ts`
   - function extractRetrofitRoutes: (filePath, content, tags) => RouteInfo[]
   - function extractRoomEntities: (_filePath, content) => SchemaModel[]
@@ -60,18 +67,29 @@
   - function getDecorators: (ts, node) => any[]
   - function parseDecorator: (ts, sf, decorator) => void
   - function getText: (sf, node) => string
-- `src/config.ts` — function loadConfig: (root) => Promise<CodesightConfig>, function mergeCliConfig: (config, cli) => CodesightConfig
+- `src/ast/native-loader.ts`
+  - function resolveNativeAst: (cfg, projectRoot) => NativeAstResolved
+  - function nativeEnabledFor: (r, lang) => boolean
+  - function isStrict: (r) => boolean
+  - function nativePluginFor: (lang, kind, r) => NativePlugin | null
+  - function recordParseError: (r, lang, kind, file, err) => void
+  - function reportNativeDiagnostics: (diagnostics) => string
+  - _...2 more_
+- `src/config.ts`
+  - function loadConfig: (root) => Promise<CodesightConfig>
+  - function safeParseConfigText: (content) => CodesightConfig
+  - function mergeCliConfig: (config, cli) => CodesightConfig
 - `src/core.ts`
   - function scan: (root, outputDirName, maxDepth, userConfig, quiet) => Promise<ScanResult>
   - const VERSION: string
   - const BRAND
 - `src/detectors/blast-radius.ts` — function analyzeBlastRadius: (filePath, result, maxDepth) => BlastRadiusResult, function analyzeMultiFileBlastRadius: (files, result, maxDepth) => BlastRadiusResult
-- `src/detectors/components.ts` — function detectComponents: (files, project) => Promise<ComponentInfo[]>, function ComponentName: (starts with uppercase) => void
+- `src/detectors/components.ts` — function detectComponents: (files, project, // Reserved for symmetry with the other detectors. No native (rust/go/python) => void, function ComponentName: (starts with uppercase) => void
 - `src/detectors/config.ts` — function detectConfig: (files, project) => Promise<ConfigInfo>
 - `src/detectors/contracts.ts` — function enrichRouteContracts: (routes, project) => Promise<RouteInfo[]>
 - `src/detectors/coverage.ts` — function isTestFile: (file) => boolean, function detectTestCoverage: (files, routes, schemas, projectRoot) => Promise<TestCoverage>
 - `src/detectors/events.ts` — function detectEvents: (files, project) => Promise<EventInfo[]>
-- `src/detectors/graph.ts` — function detectDependencyGraph: (files, project) => Promise<DependencyGraph>
+- `src/detectors/graph.ts` — function detectDependencyGraph: (files, project, // Reserved. Native (WASM-plugin) => void
 - `src/detectors/graphql.ts`
   - function detectGraphQLRoutes: (files, project) => Promise<RouteInfo[]>
   - function detectGRPCRoutes: (files, project) => Promise<RouteInfo[]>
@@ -88,7 +106,7 @@
 - `src/detectors/middleware.ts` — function detectMiddleware: (files, project) => Promise<MiddlewareInfo[]>
 - `src/detectors/openapi.ts` — function detectOpenAPISpec: (root, project) => Promise<OpenAPIResult>, interface OpenAPIResult
 - `src/detectors/routes.ts` — function detectRoutes: (files, project, config?) => Promise<RouteInfo[]>, const GET
-- `src/detectors/schema.ts` — function detectSchemas: (files, project) => Promise<SchemaModel[]>, const users
+- `src/detectors/schema.ts` — function detectSchemas: (files, project, config?) => Promise<SchemaModel[]>, const users
 - `src/detectors/tokens.ts` — function estimateTokens: (text) => number, function calculateTokenStats: (result, outputText, fileCount) => import("../types.js").TokenStats
 - `src/eval.ts` — function runEval: () => Promise<void>
 - `src/formatter.ts`
@@ -152,3 +170,10 @@
   - function runTelemetry: (root, result, outputDir) => Promise<TelemetryReport>
   - interface TelemetryTask
   - interface TelemetryReport
+- `src/wasm/plugin-host.ts`
+  - function setNativePluginProvider: (fn) => void
+  - function resetNativePluginProvider: () => void
+  - function loadPlugin: (lang, pluginDirs) => LoadedPlugin | null
+  - function bindExports: (rawExports) => LoadedPlugin | null
+  - interface LoadedPlugin
+  - type PluginProvider

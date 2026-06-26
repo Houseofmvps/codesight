@@ -2,7 +2,7 @@
 
 > **Navigation aid.** Library inventory extracted via AST. Read the source files listed here before modifying exported functions.
 
-**61 library files** across 12 modules
+**64 library files** across 14 modules
 
 ## Plugins (18 files)
 
@@ -25,6 +25,24 @@
 - `src/plugins/terraform/formatter.ts` — formatInfrastructure
 - `src/plugins/terraform/index.ts` — createTerraformPlugin
 
+## Ast (15 files)
+
+- `src/ast/extract-brightscript.ts` — extractBrightScriptFunctions, extractBrightScriptObservers, extractBrightScriptNavigationCalls, extractBrightScriptShowScreenCalls, extractBrightScriptGraphqlCalls, extractBrightScriptGlobalFields, …
+- `src/ast/native-loader.ts` — resolveNativeAst, nativeEnabledFor, isStrict, nativePluginFor, recordParseError, reportNativeDiagnostics, …
+- `src/ast/loader.ts` — loadTypeScript, resetCache, parseSourceFile, getDecorators, parseDecorator, getText
+- `src/ast/extract-android.ts` — extractRetrofitRoutes, extractRoomEntities, extractComposeComponents, extractNavigationRoutes, extractActivitiesFromManifest
+- `src/ast/extract-python.ts` — extractPythonRoutesAST, extractSQLAlchemyAST, extractDjangoModelsAST, extractSQLModelAST, isPythonAvailable
+- `src/ast/extract-csharp.ts` — extractAspNetControllerRoutes, extractAspNetMinimalApiRoutes, extractEntityFrameworkModels, extractCSharpExports
+- `src/ast/extract-scenegraph.ts` — extractSceneGraphComponent, extractMainSceneScreens, isSceneGraphXml, SceneGraphComponent
+- `src/ast/extract-components.ts` — extractReactComponentsAST, ComponentName, ComponentName
+- `src/ast/extract-dart.ts` — extractFlutterRoutes, extractFlutterWidgets, extractDartExports
+- `src/ast/extract-go.ts` — extractGoRoutesStructured, extractGORMModelsStructured, extractEntSchemasStructured
+- `src/ast/extract-php.ts` — extractLaravelRoutes, extractEloquentModels, extractPhpExports
+- `src/ast/extract-swift.ts` — extractVaporRoutes, extractSwiftUIViews, extractSwiftExports
+- `src/ast/extract-brighterscript.ts` — extractBrighterScriptImports, extractBrighterScriptExports
+- `src/ast/extract-schema.ts` — extractDrizzleSchemaAST, extractTypeORMSchemaAST
+- `src/ast/extract-routes.ts` — extractRoutesAST
+
 ## Detectors (15 files)
 
 - `src/detectors/libs.ts` — detectLibs, name, name, Name, Name, Name, …
@@ -43,23 +61,6 @@
 - `src/detectors/knowledge.ts` — detectKnowledge
 - `src/detectors/middleware.ts` — detectMiddleware
 
-## Ast (14 files)
-
-- `src/ast/extract-brightscript.ts` — extractBrightScriptFunctions, extractBrightScriptObservers, extractBrightScriptNavigationCalls, extractBrightScriptShowScreenCalls, extractBrightScriptGraphqlCalls, extractBrightScriptGlobalFields, …
-- `src/ast/loader.ts` — loadTypeScript, resetCache, parseSourceFile, getDecorators, parseDecorator, getText
-- `src/ast/extract-android.ts` — extractRetrofitRoutes, extractRoomEntities, extractComposeComponents, extractNavigationRoutes, extractActivitiesFromManifest
-- `src/ast/extract-python.ts` — extractPythonRoutesAST, extractSQLAlchemyAST, extractDjangoModelsAST, extractSQLModelAST, isPythonAvailable
-- `src/ast/extract-csharp.ts` — extractAspNetControllerRoutes, extractAspNetMinimalApiRoutes, extractEntityFrameworkModels, extractCSharpExports
-- `src/ast/extract-scenegraph.ts` — extractSceneGraphComponent, extractMainSceneScreens, isSceneGraphXml, SceneGraphComponent
-- `src/ast/extract-components.ts` — extractReactComponentsAST, ComponentName, ComponentName
-- `src/ast/extract-dart.ts` — extractFlutterRoutes, extractFlutterWidgets, extractDartExports
-- `src/ast/extract-go.ts` — extractGoRoutesStructured, extractGORMModelsStructured, extractEntSchemasStructured
-- `src/ast/extract-php.ts` — extractLaravelRoutes, extractEloquentModels, extractPhpExports
-- `src/ast/extract-swift.ts` — extractVaporRoutes, extractSwiftUIViews, extractSwiftExports
-- `src/ast/extract-brighterscript.ts` — extractBrighterScriptImports, extractBrighterScriptExports
-- `src/ast/extract-schema.ts` — extractDrizzleSchemaAST, extractTypeORMSchemaAST
-- `src/ast/extract-routes.ts` — extractRoutesAST
-
 ## Monorepo (4 files)
 
 - `src/monorepo/deps.ts` — extractCrossPackageDeps, writeDepsFile
@@ -75,7 +76,7 @@
 
 ## Config.ts (1 files)
 
-- `src/config.ts` — loadConfig, mergeCliConfig
+- `src/config.ts` — loadConfig, safeParseConfigText, mergeCliConfig
 
 ## Core.ts (1 files)
 
@@ -93,6 +94,10 @@
 
 - `src/mcp-server.ts` — startMCPServer
 
+## Reference (1 files)
+
+- `reference/ast-plugin/assembly/index.ts` — contractVersion, alloc, dealloc, parseRoutes, parseSchemas, parseImports
+
 ## Scanner.ts (1 files)
 
 - `src/scanner.ts` — readCodesightIgnore, loadFileHashCache, saveFileHashCache, hashFileContent, collectFiles, readFileSafe, …
@@ -100,6 +105,10 @@
 ## Telemetry.ts (1 files)
 
 - `src/telemetry.ts` — runTelemetry, TelemetryTask, TelemetryReport
+
+## Wasm (1 files)
+
+- `src/wasm/plugin-host.ts` — setNativePluginProvider, resetNativePluginProvider, loadPlugin, bindExports, LoadedPlugin, PluginProvider
 
 ---
 _Back to [overview.md](./overview.md)_

@@ -2,9 +2,9 @@
 
 > **Stack:** raw-http | none | unknown | typescript
 
-> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 61 lib files | 6 env vars | 5 middleware | 13 events | 60% test coverage
-> **Token savings:** this file is ~4,800 tokens. Without it, AI exploration would cost ~32,700 tokens. **Saves ~27,900 tokens per conversation.**
-> **Last scanned:** 2026-05-18 12:45 — re-run after significant changes
+> 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 64 lib files | 10 env vars | 5 middleware | 13 events | 60% test coverage
+> **Token savings:** this file is ~5,200 tokens. Without it, AI exploration would cost ~34,000 tokens. **Saves ~28,800 tokens per conversation.**
+> **Last scanned:** 2026-06-26 22:01 — re-run after significant changes
 
 ---
 
@@ -30,6 +30,13 @@
 
 # Libraries
 
+- `reference/ast-plugin/assembly/index.ts`
+  - function contractVersion: () => i32
+  - function alloc: (len) => i32
+  - function dealloc: (ptr, len) => void
+  - function parseRoutes: (srcPtr, srcLen) => i64
+  - function parseSchemas: (srcPtr, srcLen) => i64
+  - function parseImports: (srcPtr, srcLen) => i64
 - `src/ast/extract-android.ts`
   - function extractRetrofitRoutes: (filePath, content, tags) => RouteInfo[]
   - function extractRoomEntities: (_filePath, content) => SchemaModel[]
@@ -90,18 +97,29 @@
   - function getDecorators: (ts, node) => any[]
   - function parseDecorator: (ts, sf, decorator) => void
   - function getText: (sf, node) => string
-- `src/config.ts` — function loadConfig: (root) => Promise<CodesightConfig>, function mergeCliConfig: (config, cli) => CodesightConfig
+- `src/ast/native-loader.ts`
+  - function resolveNativeAst: (cfg, projectRoot) => NativeAstResolved
+  - function nativeEnabledFor: (r, lang) => boolean
+  - function isStrict: (r) => boolean
+  - function nativePluginFor: (lang, kind, r) => NativePlugin | null
+  - function recordParseError: (r, lang, kind, file, err) => void
+  - function reportNativeDiagnostics: (diagnostics) => string
+  - _...2 more_
+- `src/config.ts`
+  - function loadConfig: (root) => Promise<CodesightConfig>
+  - function safeParseConfigText: (content) => CodesightConfig
+  - function mergeCliConfig: (config, cli) => CodesightConfig
 - `src/core.ts`
   - function scan: (root, outputDirName, maxDepth, userConfig, quiet) => Promise<ScanResult>
   - const VERSION: string
   - const BRAND
 - `src/detectors/blast-radius.ts` — function analyzeBlastRadius: (filePath, result, maxDepth) => BlastRadiusResult, function analyzeMultiFileBlastRadius: (files, result, maxDepth) => BlastRadiusResult
-- `src/detectors/components.ts` — function detectComponents: (files, project) => Promise<ComponentInfo[]>, function ComponentName: (starts with uppercase) => void
+- `src/detectors/components.ts` — function detectComponents: (files, project, // Reserved for symmetry with the other detectors. No native (rust/go/python) => void, function ComponentName: (starts with uppercase) => void
 - `src/detectors/config.ts` — function detectConfig: (files, project) => Promise<ConfigInfo>
 - `src/detectors/contracts.ts` — function enrichRouteContracts: (routes, project) => Promise<RouteInfo[]>
 - `src/detectors/coverage.ts` — function isTestFile: (file) => boolean, function detectTestCoverage: (files, routes, schemas, projectRoot) => Promise<TestCoverage>
 - `src/detectors/events.ts` — function detectEvents: (files, project) => Promise<EventInfo[]>
-- `src/detectors/graph.ts` — function detectDependencyGraph: (files, project) => Promise<DependencyGraph>
+- `src/detectors/graph.ts` — function detectDependencyGraph: (files, project, // Reserved. Native (WASM-plugin) => void
 - `src/detectors/graphql.ts`
   - function detectGraphQLRoutes: (files, project) => Promise<RouteInfo[]>
   - function detectGRPCRoutes: (files, project) => Promise<RouteInfo[]>
@@ -118,7 +136,7 @@
 - `src/detectors/middleware.ts` — function detectMiddleware: (files, project) => Promise<MiddlewareInfo[]>
 - `src/detectors/openapi.ts` — function detectOpenAPISpec: (root, project) => Promise<OpenAPIResult>, interface OpenAPIResult
 - `src/detectors/routes.ts` — function detectRoutes: (files, project, config?) => Promise<RouteInfo[]>, const GET
-- `src/detectors/schema.ts` — function detectSchemas: (files, project) => Promise<SchemaModel[]>, const users
+- `src/detectors/schema.ts` — function detectSchemas: (files, project, config?) => Promise<SchemaModel[]>, const users
 - `src/detectors/tokens.ts` — function estimateTokens: (text) => number, function calculateTokenStats: (result, outputText, fileCount) => import("../types.js").TokenStats
 - `src/eval.ts` — function runEval: () => Promise<void>
 - `src/formatter.ts`
@@ -182,6 +200,13 @@
   - function runTelemetry: (root, result, outputDir) => Promise<TelemetryReport>
   - interface TelemetryTask
   - interface TelemetryReport
+- `src/wasm/plugin-host.ts`
+  - function setNativePluginProvider: (fn) => void
+  - function resetNativePluginProvider: () => void
+  - function loadPlugin: (lang, pluginDirs) => LoadedPlugin | null
+  - function bindExports: (rawExports) => LoadedPlugin | null
+  - interface LoadedPlugin
+  - type PluginProvider
 
 ---
 
@@ -189,12 +214,16 @@
 
 ## Environment Variables
 
+- `CODESIGHT_NATIVE_AST` **required** — src/index.ts
+- `CODESIGHT_PLUGIN_DIR` **required** — src/index.ts
+- `CODESIGHT_REFERENCE_PLUGIN_DIR` **required** — tests/reference-plugin.test.ts
 - `DATABASE_URL` **required** — tests/fixtures/config-app/.env.example
 - `JWT_SECRET` **required** — tests/fixtures/config-app/.env.example
 - `PORT` (has default) — tests/fixtures/config-app/.env.example
 - `VAR` **required** — src/detectors/config.ts
 - `VAR_NAME` **required** — src/detectors/config.ts
 - `VITE_VAR_NAME` **required** — src/detectors/config.ts
+- `XDG_DATA_HOME` **required** — src/ast/native-loader.ts
 
 ## Config Files
 
@@ -220,13 +249,14 @@
 
 ## Most Imported Files (change these carefully)
 
-- `src/types.ts` — imported by **48** files
+- `src/types.ts` — imported by **49** files
 - `src/scanner.ts` — imported by **16** files
 - `src/ast/loader.ts` — imported by **6** files
 - `src/plugins/terraform/types.ts` — imported by **6** files
 - `src/ast/extract-brightscript.ts` — imported by **5** files
 - `src/plugins/cicd/types.ts` — imported by **5** files
 - `src/plugins/githooks/types.ts` — imported by **5** files
+- `src/ast/native-loader.ts` — imported by **4** files
 - `src/detectors/routes.ts` — imported by **3** files
 - `src/detectors/schema.ts` — imported by **3** files
 - `src/detectors/components.ts` — imported by **3** files
@@ -239,20 +269,19 @@
 - `src/ast/extract-scenegraph.ts` — imported by **3** files
 - `src/ast/extract-csharp.ts` — imported by **3** files
 - `src/ast/extract-php.ts` — imported by **3** files
-- `src/generators/ai-config.ts` — imported by **3** files
 
 ## Import Map (who imports what)
 
-- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-brighterscript.ts`, `src/ast/extract-brightscript.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts` +43 more
+- `src/types.ts` ← `src/ast/extract-android.ts`, `src/ast/extract-brighterscript.ts`, `src/ast/extract-brightscript.ts`, `src/ast/extract-components.ts`, `src/ast/extract-csharp.ts` +44 more
 - `src/scanner.ts` ← `src/core.ts`, `src/detectors/components.ts`, `src/detectors/config.ts`, `src/detectors/contracts.ts`, `src/detectors/coverage.ts` +11 more
 - `src/ast/loader.ts` ← `src/ast/extract-components.ts`, `src/ast/extract-routes.ts`, `src/ast/extract-schema.ts`, `src/detectors/components.ts`, `src/detectors/routes.ts` +1 more
 - `src/plugins/terraform/types.ts` ← `src/plugins/terraform/file-collector.ts`, `src/plugins/terraform/formatter.ts`, `src/plugins/terraform/hcl-parser.ts`, `src/plugins/terraform/index.ts`, `src/plugins/terraform/index.ts` +1 more
 - `src/ast/extract-brightscript.ts` ← `src/ast/extract-brighterscript.ts`, `src/detectors/events.ts`, `src/detectors/libs.ts`, `src/detectors/middleware.ts`, `src/detectors/routes.ts`
 - `src/plugins/cicd/types.ts` ← `src/plugins/cicd/circleci.ts`, `src/plugins/cicd/formatter.ts`, `src/plugins/cicd/github-actions.ts`, `src/plugins/cicd/index.ts`, `src/plugins/cicd/index.ts`
 - `src/plugins/githooks/types.ts` ← `src/plugins/githooks/formatter.ts`, `src/plugins/githooks/husky.ts`, `src/plugins/githooks/index.ts`, `src/plugins/githooks/lefthook.ts`, `src/plugins/githooks/raw.ts`
+- `src/ast/native-loader.ts` ← `src/core.ts`, `src/detectors/routes.ts`, `src/detectors/schema.ts`, `src/index.ts`
 - `src/detectors/routes.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 - `src/detectors/schema.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
-- `src/detectors/components.ts` ← `src/core.ts`, `src/eval.ts`, `src/mcp-server.ts`
 
 ---
 
@@ -294,7 +323,7 @@
 # Test Coverage
 
 > **60%** of routes and models are covered by tests
-> 190 test files found
+> 192 test files found
 
 ## Covered Routes
 
