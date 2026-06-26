@@ -1,0 +1,12 @@
+{
+  "entries": ["assembly/index.ts"],
+  "options": {
+    "outFile": "codesight-reference-ast.wasm",
+    "runtime": "stub",
+    "exportRuntime": false,
+    "optimizeLevel": 3,
+    "shrinkLevel": 2,
+    "converge": true,
+    "use": ["abort="]
+  }
+}

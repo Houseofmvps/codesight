@@ -95,7 +95,7 @@ export interface WorkspaceInfo {
   orms: ORM[];
 }
 
-export type DetectionMethod = "ast" | "regex";
+export type DetectionMethod = "ast" | "regex" | "native";
 
 export interface RouteInfo {
   method: string;
@@ -215,6 +215,12 @@ export interface CodesightConfig {
   collapseCrud?: boolean;
   /** Plugin hooks */
   plugins?: CodesightPlugin[];
+  /**
+   * Optional language-native AST parsing via user-provided WASM plugins.
+   * Off by default — when unset, all parsing uses codesight's built-in
+   * extractors (behavior is byte-identical to having no WASM support).
+   */
+  nativeAst?: NativeAstConfig;
   /** Monorepo configuration */
   monorepo?: MonorepoConfig;
   /**
@@ -224,6 +230,35 @@ export interface CodesightConfig {
    * a different navigation helper convention.
    */
   rokuScreenHelpers?: string[];
+}
+
+/** Native language to which a WASM AST plugin applies. */
+export type NativeLang = "rust" | "go" | "python";
+
+/** Extraction capability a native plugin can provide. */
+export type NativeKind = "routes" | "schemas" | "imports";
+
+export interface NativeAstConfig {
+  /**
+   * true  → try the plugin, silently fall back to the built-in parser on miss.
+   * "strict" → same fallback behavior, but collect diagnostics where the plugin
+   *            was expected but unavailable/errored, and fail the run at the end.
+   * false/undefined → disabled (default).
+   */
+  enabled?: boolean | "strict";
+  /** Restrict native parsing to these languages. Empty/undefined = all. */
+  languages?: NativeLang[];
+  /** Explicit plugin directory; prepended to the default search waterfall. */
+  pluginDir?: string;
+}
+
+/** A record of a place where native parsing was expected but did not run (strict mode). */
+export interface NativeDiagnostic {
+  lang: NativeLang;
+  kind: NativeKind;
+  /** Relative file path, when the diagnostic is file-specific (e.g. a parse throw). */
+  file?: string;
+  reason: string;
 }
 
 export interface CodesightPlugin {
@@ -284,6 +319,8 @@ export interface ScanResult {
   crudGroups?: CrudGroup[];
   /** Plugin-contributed custom sections (rendered into CODESIGHT.md alongside built-in sections) */
   customSections?: { name: string; content: string }[];
+  /** Strict-mode native-AST diagnostics (places a WASM plugin was expected but did not run). */
+  nativeDiagnostics?: NativeDiagnostic[];
 }
 
 export interface TokenStats {

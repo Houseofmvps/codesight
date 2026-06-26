@@ -1,10 +1,19 @@
 import { relative, dirname, resolve, extname } from "node:path";
 import { readFileSafe } from "../scanner.js";
-import type { DependencyGraph, ImportEdge, ProjectInfo } from "../types.js";
+import type { DependencyGraph, ImportEdge, ProjectInfo, CodesightConfig } from "../types.js";
 
 export async function detectDependencyGraph(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  // Reserved. Native (WASM-plugin) import extraction is intentionally NOT
+  // dispatched yet: dependency-graph edges must resolve to project-relative file
+  // paths, but the per-file plugin ABI (`parseImports(src)`) has no whole-project
+  // context (root, file list, module-resolution rules) to do that, so a plugin
+  // can only emit unresolved targets. `parseImports` stays in the published
+  // contract; wiring it requires reworking the dispatch/plugin boundary to pass
+  // project context. Until then, built-in extraction handles imports.
+  // TODO(native-imports): pass project context to the plugin and dispatch here.
+  _config?: CodesightConfig
 ): Promise<DependencyGraph> {
   const edges: ImportEdge[] = [];
   const importCount = new Map<string, number>();

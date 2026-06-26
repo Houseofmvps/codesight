@@ -16,6 +16,8 @@
     "build": "tsc",
     "prepare": "tsc",
     "dev": "tsx src/index.ts",
+    "build:reference": "asc --config reference/ast-plugin/asconfig.json",
+    "checksums:reference": "node reference/ast-plugin/gen-checksums.mjs",
     "test": "pnpm build && tsx --test tests/*.test.ts",
     "prepublishOnly": "pnpm build"
   },
@@ -75,9 +77,10 @@
     }
   ],
   "devDependencies": {
-    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "assemblyscript": "0.28.19",
     "tsx": "^4.19.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.7.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -7,7 +7,8 @@ import { extractGORMModelsStructured, extractEntSchemasStructured } from "../ast
 import { extractEloquentModels } from "../ast/extract-php.js";
 import { extractEntityFrameworkModels } from "../ast/extract-csharp.js";
 import { extractRoomEntities } from "../ast/extract-android.js";
-import type { SchemaModel, SchemaField, ProjectInfo } from "../types.js";
+import type { SchemaModel, SchemaField, ProjectInfo, CodesightConfig } from "../types.js";
+import { resolveNativeAst, nativePluginFor, recordParseError, type NativeAstResolved } from "../ast/native-loader.js";
 
 const AUDIT_FIELDS = new Set([
   "createdAt",
@@ -20,9 +21,11 @@ const AUDIT_FIELDS = new Set([
 
 export async function detectSchemas(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  config?: CodesightConfig
 ): Promise<SchemaModel[]> {
   const models: SchemaModel[] = [];
+  const native = resolveNativeAst(config?.nativeAst, project.root);
 
   for (const orm of project.orms) {
     switch (orm) {
@@ -36,13 +39,13 @@ export async function detectSchemas(
         models.push(...(await detectTypeORMSchemas(files, project)));
         break;
       case "sqlalchemy":
-        models.push(...(await detectSQLAlchemySchemas(files, project)));
+        models.push(...(await detectSQLAlchemySchemas(files, project, native)));
         break;
       case "gorm":
-        models.push(...(await detectGORMSchemas(files, project)));
+        models.push(...(await detectGORMSchemas(files, project, native)));
         break;
       case "ent":
-        models.push(...(await detectEntSchemas(files, project)));
+        models.push(...(await detectEntSchemas(files, project, native)));
         break;
       case "activerecord":
         models.push(...(await detectActiveRecordSchemas(project)));
@@ -51,7 +54,7 @@ export async function detectSchemas(
         models.push(...(await detectEctoSchemas(files, project)));
         break;
       case "django":
-        models.push(...(await detectDjangoSchemas(files, project)));
+        models.push(...(await detectDjangoSchemas(files, project, native)));
         break;
       case "eloquent":
         models.push(...(await detectEloquentSchemas(files, project)));
@@ -355,14 +358,26 @@ async function detectTypeORMSchemas(
 // --- SQLAlchemy ---
 async function detectSQLAlchemySchemas(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<SchemaModel[]> {
   const pyFiles = files.filter((f) => f.endsWith(".py"));
   const models: SchemaModel[] = [];
+  const np = native ? nativePluginFor("python", "schemas", native) : null;
 
   for (const file of pyFiles) {
     const content = await readFileSafe(file);
     const rel = relative(project.root, file);
+
+    // Native WASM plugin first (when enabled + present); falls through on miss.
+    if (np?.schemas) {
+      try {
+        const r = np.schemas(rel, content);
+        if (r && r.length) { models.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "python", "schemas", rel, e);
+      }
+    }
 
     // SQLModel: class X(SQLModel, table=True) with typed annotations
     if (content.includes("SQLModel") && content.includes("table=True")) {
@@ -435,16 +450,28 @@ async function detectSQLAlchemySchemas(
 // --- GORM ---
 async function detectGORMSchemas(
   files: string[],
-  _project: ProjectInfo
+  _project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<SchemaModel[]> {
   const goFiles = files.filter((f) => f.endsWith(".go"));
   const models: SchemaModel[] = [];
+  const np = native ? nativePluginFor("go", "schemas", native) : null;
 
   for (const file of goFiles) {
     const content = await readFileSafe(file);
     if (!content.includes("gorm") && !content.includes("Model") && !content.includes("`json:")) continue;
 
     const rel = relative(_project.root, file);
+
+    if (np?.schemas) {
+      try {
+        const r = np.schemas(rel, content);
+        if (r && r.length) { models.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "go", "schemas", rel, e);
+      }
+    }
+
     const structModels = extractGORMModelsStructured(rel, content);
     models.push(...structModels);
   }
@@ -455,18 +482,30 @@ async function detectGORMSchemas(
 // --- Ent (Go) ---
 async function detectEntSchemas(
   files: string[],
-  _project: ProjectInfo
+  _project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<SchemaModel[]> {
   const goFiles = files.filter(
     (f) => f.endsWith(".go") && (f.includes("/ent/schema/") || f.includes("/schema/"))
   );
   const models: SchemaModel[] = [];
+  const np = native ? nativePluginFor("go", "schemas", native) : null;
 
   for (const file of goFiles) {
     const content = await readFileSafe(file);
     if (!content.includes("ent.Schema")) continue;
 
     const rel = relative(_project.root, file);
+
+    if (np?.schemas) {
+      try {
+        const r = np.schemas(rel, content);
+        if (r && r.length) { models.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "go", "schemas", rel, e);
+      }
+    }
+
     const structModels = extractEntSchemasStructured(rel, content);
     models.push(...structModels);
   }
@@ -604,19 +643,31 @@ async function detectActiveRecordSchemas(
 // --- Django ORM ---
 async function detectDjangoSchemas(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<SchemaModel[]> {
   // Django models live in models.py or models/ directories
   const modelFiles = files.filter(
     (f) => f.endsWith("/models.py") || f.includes("/models/") && f.endsWith(".py")
   );
   const models: SchemaModel[] = [];
+  const np = native ? nativePluginFor("python", "schemas", native) : null;
 
   for (const file of modelFiles) {
     const content = await readFileSafe(file);
     if (!content.includes("models.Model") && !content.includes("(Model)")) continue;
 
     const rel = relative(project.root, file);
+
+    if (np?.schemas) {
+      try {
+        const r = np.schemas(rel, content);
+        if (r && r.length) { models.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "python", "schemas", rel, e);
+      }
+    }
+
     const astModels = await extractDjangoModelsAST(rel, content);
     if (astModels && astModels.length > 0) {
       models.push(...astModels);

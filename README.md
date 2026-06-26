@@ -53,6 +53,7 @@ npx codesight --mcp                        # Start as MCP server (13 tools) for 
 npx codesight --blast src/lib/db.ts        # Show blast radius for a file
 npx codesight --profile claude-code        # Generate optimized config for a specific AI tool
 npx codesight --benchmark                  # Show detailed token savings breakdown
+npx codesight --native-ast                 # Opt-in: use user-supplied WASM AST plugins (see docs/wasm-plugins.md)
 npx codesight --mode knowledge             # Map knowledge base (.md notes → KNOWLEDGE.md)
 npx codesight --mode knowledge ~/vault     # Map Obsidian vault, ADRs, meeting notes, retros
 ```
@@ -335,6 +336,15 @@ Analyzing... done (AST: 60 routes, 18 models, 16 components)
 No configuration needed. If TypeScript is in your `node_modules`, AST kicks in automatically. Works with npm, yarn, and pnpm (including strict mode). Falls back to regex for non-TypeScript projects or frameworks without AST support.
 
 **AST-supported frameworks:** Express, Hono, Fastify, Koa, Elysia (route chains + middleware), NestJS (decorator combining + guards), tRPC (router nesting + procedure types), Drizzle (field chains + relations), TypeORM (entity decorators), React (props from interfaces + destructuring + forwardRef/memo).
+
+### Native-AST WASM plugins (opt-in)
+
+codesight can hand extraction off to an optional, user-provided WebAssembly
+plugin — configured with `--native-ast` (or `--native-ast-strict`). codesight
+does not currently ship any WASM-based plugins itself; it only supports the
+possibility of user-supplied plugins, and falls back to its built-in extractors
+when none are found. To build a conforming plugin, see the contract
+reference: [`docs/wasm-plugins.md`](docs/wasm-plugins.md).
 
 ## Routes
 

@@ -1,0 +1,64 @@
+---
+name: wasm-plugin-abi
+
+# Builds the reference WASM plugin from source and runs the ABI conformance test
+# against the FRESHLY BUILT artifact (not the committed prebuilt), so any drift
+# between the reference implementation and the plugin contract fails here.
+# Node-only — AssemblyScript compiles via npm, no extra toolchain required.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  abi:
+    name: Reference plugin ABI conformance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build host (TypeScript → dist/)
+        run: pnpm build
+
+      - name: Build reference plugin (AssemblyScript → wasm)
+        run: pnpm build:reference
+
+      # Staleness guard: compare the committed checksums against the freshly
+      # built wasm (+ committed source/manifest). A mismatch means the committed
+      # binary is stale relative to source, or a file was edited without running
+      # `pnpm checksums:reference`. Relies on a pinned `asc` version producing a
+      # reproducible build.
+      - name: Verify reference checksums (no drift / no stale binary)
+        working-directory: reference/ast-plugin
+        run: |
+          fail=0
+          for f in assembly/index.ts codesight-reference-ast.wasm; do
+            have=$(shasum -a 256 "$f" | cut -d ' ' -f1)
+            if jq -e --arg f "$f" --arg h "$have" '.files[$f] == $h' checksums.json >/dev/null; then
+              echo "ok: $f"
+            else
+              want=$(jq -r --arg f "$f" '.files[$f] // "(missing)"' checksums.json)
+              echo "::error file=reference/ast-plugin/$f::checksum drift — committed ${want}, built ${have}. Run 'pnpm build:reference && pnpm checksums:reference' and commit."
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Conformance test against the fresh build
+        run: pnpm exec tsx --test tests/reference-plugin.test.ts
+        env:
+          CODESIGHT_REFERENCE_PLUGIN_DIR: reference/ast-plugin

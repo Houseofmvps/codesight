@@ -9,8 +9,9 @@ import { generateAIConfigs } from "./generators/ai-config.js";
 import { generateHtmlReport } from "./generators/html-report.js";
 import { generateWiki } from "./generators/wiki.js";
 import type { ScanResult } from "./types.js";
-import type { CodesightConfig } from "./types.js";
+import type { CodesightConfig, NativeAstConfig, NativeLang } from "./types.js";
 import { loadConfig, mergeCliConfig } from "./config.js";
+import { reportNativeDiagnostics } from "./ast/native-loader.js";
 import { scan, BRAND, VERSION } from "./core.js";
 
 function printHelp() {
@@ -39,6 +40,9 @@ function printHelp() {
     --since <ref>            Show only routes from files changed since git ref/commit
     --mode <mode>            Scan mode: code (default) | knowledge (map .md notes)
     --refresh [pkg]          Rebuild monorepo package context (all or named package)
+    --native-ast [langs]     Use WASM AST plugins when present (optional list: rust,go,python)
+    --native-ast-strict      Like --native-ast, but report + fail if a plugin is missing
+    --plugin-dir <dir>       Extra directory to search for WASM plugins
     -v, --version            Show version
     -h, --help               Show this help
 
@@ -74,6 +78,54 @@ async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const KNOWN_NATIVE_LANGS: NativeLang[] = ["rust", "go", "python"];
+
+/** True when `token` is a comma list of known native languages (and only those). */
+function isLangList(token: string): boolean {
+  if (!token || token.startsWith("-")) return false;
+  return token
+    .split(",")
+    .every((t) => (KNOWN_NATIVE_LANGS as string[]).includes(t.trim().toLowerCase()));
+}
+
+function parseLangs(token: string): NativeLang[] {
+  return token
+    .split(",")
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean) as NativeLang[];
+}
+
+/** Parse CODESIGHT_NATIVE_AST: "1"|"true"|"on"|"strict"|"rust,go" → partial config. */
+function parseNativeAstEnv(
+  v: string | undefined
+): { enabled: boolean | "strict"; languages?: NativeLang[] } | undefined {
+  if (!v) return undefined;
+  const t = v.trim().toLowerCase();
+  if (t === "" || t === "0" || t === "false" || t === "off") return undefined;
+  if (t === "strict") return { enabled: "strict" };
+  if (t === "1" || t === "true" || t === "on") return { enabled: true };
+  if (isLangList(t)) return { enabled: true, languages: parseLangs(t) };
+  return undefined;
+}
+
+/** Merge native-AST CLI flags with env vars (CLI wins per field). */
+function resolveNativeAstCli(
+  cliEnabled: boolean | "strict" | undefined,
+  cliLangs: NativeLang[] | undefined,
+  cliPluginDir: string
+): NativeAstConfig | undefined {
+  const env = parseNativeAstEnv(process.env.CODESIGHT_NATIVE_AST);
+  const enabled = cliEnabled ?? env?.enabled;
+  if (!enabled) return undefined;
+
+  const cfg: NativeAstConfig = { enabled };
+  const languages = cliLangs ?? env?.languages;
+  if (languages && languages.length) cfg.languages = languages;
+  const dir = cliPluginDir || process.env.CODESIGHT_PLUGIN_DIR;
+  if (dir) cfg.pluginDir = dir;
+  return cfg;
 }
 
 async function installGitHook(root: string, outputDirName: string) {
@@ -267,6 +319,9 @@ async function main() {
   let mode = "code";
   let doRefresh = false;
   let refreshPackage = "";
+  let nativeAstEnabled: boolean | "strict" | undefined;
+  let nativeAstLangs: NativeLang[] | undefined;
+  let pluginDir = "";
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -312,6 +367,19 @@ async function main() {
       if (args[i + 1] && !args[i + 1].startsWith("-")) {
         refreshPackage = args[++i];
       }
+    } else if (arg === "--native-ast") {
+      if (nativeAstEnabled !== "strict") nativeAstEnabled = true;
+      // Optional next token: a comma list of known languages (must not swallow
+      // the target directory, e.g. `--native-ast ./project`).
+      const next = args[i + 1];
+      if (next && isLangList(next)) {
+        nativeAstLangs = parseLangs(next);
+        i++;
+      }
+    } else if (arg === "--native-ast-strict") {
+      nativeAstEnabled = "strict";
+    } else if (arg === "--plugin-dir" && args[i + 1]) {
+      pluginDir = args[++i];
     } else if (!arg.startsWith("-")) {
       targetDir = resolve(arg);
     }
@@ -333,6 +401,10 @@ async function main() {
 
   const root = resolve(targetDir);
 
+  // Resolve native-AST settings: CLI takes precedence over env, both over the
+  // config file (merged below). Undefined unless explicitly enabled somewhere.
+  const nativeAst = resolveNativeAstCli(nativeAstEnabled, nativeAstLangs, pluginDir);
+
   // Load config file
   const fileConfig = await loadConfig(root);
   const config = mergeCliConfig(fileConfig, {
@@ -340,6 +412,7 @@ async function main() {
     outputDir: outputDirName !== ".codesight" ? outputDirName : undefined,
     profile: doProfile || undefined,
     maxTokens: maxTokens > 0 ? maxTokens : undefined,
+    nativeAst,
   });
 
   // Apply config overrides
@@ -566,6 +639,14 @@ async function main() {
     process.stdout.write(`  Generating ${doProfile} profile...`);
     const file = await generateProfileConfig(result, root, doProfile);
     console.log(` ${file}`);
+  }
+
+  // Native-AST strict mode: report places a WASM plugin was expected but didn't
+  // run, and fail the run. Diagnostics are only populated under strict mode.
+  if (result.nativeDiagnostics?.length) {
+    console.error("");
+    console.error(reportNativeDiagnostics(result.nativeDiagnostics));
+    process.exitCode = 1;
   }
 
   // Watch mode (blocks)

@@ -10,6 +10,7 @@ import { extractFlutterRoutes } from "../ast/extract-dart.js";
 import { extractVaporRoutes } from "../ast/extract-swift.js";
 import { extractRetrofitRoutes, extractNavigationRoutes, extractActivitiesFromManifest } from "../ast/extract-android.js";
 import type { RouteInfo, Framework, ProjectInfo, CodesightConfig } from "../types.js";
+import { resolveNativeAst, nativePluginFor, recordParseError, type NativeAstResolved } from "../ast/native-loader.js";
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
 
@@ -40,6 +41,7 @@ export async function detectRoutes(
   config?: CodesightConfig
 ): Promise<RouteInfo[]> {
   const routes: RouteInfo[] = [];
+  const native = resolveNativeAst(config?.nativeAst, project.root);
 
   for (const fw of project.frameworks) {
     switch (fw) {
@@ -83,20 +85,20 @@ export async function detectRoutes(
         routes.push(...(await detectNuxtRoutes(files, project)));
         break;
       case "fastapi":
-        routes.push(...(await detectFastAPIRoutes(files, project)));
+        routes.push(...(await detectFastAPIRoutes(files, project, native)));
         break;
       case "flask":
-        routes.push(...(await detectFlaskRoutes(files, project)));
+        routes.push(...(await detectFlaskRoutes(files, project, native)));
         break;
       case "django":
-        routes.push(...(await detectDjangoRoutes(files, project)));
+        routes.push(...(await detectDjangoRoutes(files, project, native)));
         break;
       case "gin":
       case "go-net-http":
       case "fiber":
       case "echo":
       case "chi":
-        routes.push(...(await detectGoRoutes(files, project, fw)));
+        routes.push(...(await detectGoRoutes(files, project, fw, native)));
         break;
       case "rails":
         routes.push(...(await detectRailsRoutes(files, project)));
@@ -112,7 +114,7 @@ export async function detectRoutes(
         break;
       case "actix":
       case "axum":
-        routes.push(...(await detectRustRoutes(files, project, fw)));
+        routes.push(...(await detectRustRoutes(files, project, fw, native)));
         break;
       case "raw-http":
         routes.push(...(await detectRawHttpRoutes(files, project)));
@@ -787,10 +789,12 @@ async function detectNuxtRoutes(
 // --- FastAPI ---
 async function detectFastAPIRoutes(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<RouteInfo[]> {
   const pyFiles = files.filter((f) => f.endsWith(".py"));
   const routes: RouteInfo[] = [];
+  const np = native ? nativePluginFor("python", "routes", native) : null;
 
   for (const file of pyFiles) {
     const content = await readFileSafe(file);
@@ -798,6 +802,16 @@ async function detectFastAPIRoutes(
 
     const rel = relative(project.root, file);
     const tags = detectTags(content);
+
+    // Native WASM plugin first (when enabled + present); falls through on miss.
+    if (np?.routes) {
+      try {
+        const r = np.routes(rel, content, "fastapi", tags);
+        if (r && r.length) { routes.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "python", "routes", rel, e);
+      }
+    }
 
     // Try Python AST first
     const astRoutes = await extractPythonRoutesAST(rel, content, "fastapi", tags);
@@ -827,10 +841,12 @@ async function detectFastAPIRoutes(
 // --- Flask ---
 async function detectFlaskRoutes(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<RouteInfo[]> {
   const pyFiles = files.filter((f) => f.endsWith(".py"));
   const routes: RouteInfo[] = [];
+  const np = native ? nativePluginFor("python", "routes", native) : null;
 
   for (const file of pyFiles) {
     const content = await readFileSafe(file);
@@ -838,6 +854,16 @@ async function detectFlaskRoutes(
 
     const rel = relative(project.root, file);
     const tags = detectTags(content);
+
+    // Native WASM plugin first (when enabled + present); falls through on miss.
+    if (np?.routes) {
+      try {
+        const r = np.routes(rel, content, "flask", tags);
+        if (r && r.length) { routes.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "python", "routes", rel, e);
+      }
+    }
 
     // Try Python AST first
     const astRoutes = await extractPythonRoutesAST(rel, content, "flask", tags);
@@ -874,17 +900,29 @@ async function detectFlaskRoutes(
 // --- Django ---
 async function detectDjangoRoutes(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  native?: NativeAstResolved
 ): Promise<RouteInfo[]> {
   const pyFiles = files.filter(
     (f) => f.endsWith(".py") && (basename(f) === "urls.py" || basename(f) === "views.py")
   );
   const routes: RouteInfo[] = [];
+  const np = native ? nativePluginFor("python", "routes", native) : null;
 
   for (const file of pyFiles) {
     const content = await readFileSafe(file);
     const rel = relative(project.root, file);
     const tags = detectTags(content);
+
+    // Native WASM plugin first (when enabled + present); falls through on miss.
+    if (np?.routes) {
+      try {
+        const r = np.routes(rel, content, "django", tags);
+        if (r && r.length) { routes.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "python", "routes", rel, e);
+      }
+    }
 
     // Try Python AST first
     const astRoutes = await extractPythonRoutesAST(rel, content, "django", tags);
@@ -914,15 +952,27 @@ async function detectDjangoRoutes(
 async function detectGoRoutes(
   files: string[],
   project: ProjectInfo,
-  fw: Framework
+  fw: Framework,
+  native?: NativeAstResolved
 ): Promise<RouteInfo[]> {
   const goFiles = files.filter((f) => f.endsWith(".go"));
   const routes: RouteInfo[] = [];
+  const np = native ? nativePluginFor("go", "routes", native) : null;
 
   for (const file of goFiles) {
     const content = await readFileSafe(file);
     const rel = relative(project.root, file);
     const tags = detectTags(content);
+
+    // Native WASM plugin first (when enabled + present); falls through on miss.
+    if (np?.routes) {
+      try {
+        const r = np.routes(rel, content, fw, tags);
+        if (r && r.length) { routes.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "go", "routes", rel, e);
+      }
+    }
 
     // Use structured parser (brace-tracking + group prefix resolution)
     const structuredRoutes = extractGoRoutesStructured(rel, content, fw, tags);
@@ -1193,14 +1243,27 @@ function extractKtorParams(path: string): string[] {
 async function detectRustRoutes(
   files: string[],
   project: ProjectInfo,
-  fw: Framework
+  fw: Framework,
+  native?: NativeAstResolved
 ): Promise<RouteInfo[]> {
   const rsFiles = files.filter((f) => f.endsWith(".rs"));
   const routes: RouteInfo[] = [];
+  const np = native ? nativePluginFor("rust", "routes", native) : null;
 
   for (const file of rsFiles) {
     const content = await readFileSafe(file);
     const rel = relative(project.root, file);
+
+    // Native WASM plugin first (when enabled + present). Rust currently has no
+    // built-in AST path — this is the only AST-grade option for Rust routes.
+    if (np?.routes) {
+      try {
+        const r = np.routes(rel, content, fw, detectTags(content));
+        if (r && r.length) { routes.push(...r); continue; }
+      } catch (e) {
+        if (native) recordParseError(native, "rust", "routes", rel, e);
+      }
+    }
 
     if (fw === "actix") {
       // #[get("/path")], #[post("/path")], etc.

@@ -5,7 +5,7 @@ import { extractReactComponentsAST } from "../ast/extract-components.js";
 import { extractFlutterWidgets } from "../ast/extract-dart.js";
 import { extractSwiftUIViews } from "../ast/extract-swift.js";
 import { extractComposeComponents } from "../ast/extract-android.js";
-import type { ComponentInfo, ProjectInfo } from "../types.js";
+import type { ComponentInfo, ProjectInfo, CodesightConfig } from "../types.js";
 
 // shadcn/ui + radix primitives to filter out
 const UI_PRIMITIVES = new Set([
@@ -74,7 +74,10 @@ function isUIPrimitive(filePath: string): boolean {
 
 export async function detectComponents(
   files: string[],
-  project: ProjectInfo
+  project: ProjectInfo,
+  // Reserved for symmetry with the other detectors. No native (rust/go/python)
+  // component extraction exists today — component frameworks are JS/Dart/Swift/Kotlin.
+  _config?: CodesightConfig
 ): Promise<ComponentInfo[]> {
   switch (project.componentFramework) {
     case "react":
