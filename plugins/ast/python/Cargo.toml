@@ -1,0 +1,20 @@
+[package]
+name = "codesight-python-ast"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+repository = { workspace = true }
+
+[lib]
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+ruff_python_parser = { workspace = true }
+ruff_python_ast = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }

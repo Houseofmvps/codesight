@@ -4,6 +4,8 @@ dist/
 .DS_Store
 docs/superpowers/
 package-lock.json
+plugins/**/*.wasm
+plugins/**/target/
 tests/fixtures/**/.codesight/
 tests/fixtures/**/CODESIGHT.md
 # Fully test-generated fixture directories

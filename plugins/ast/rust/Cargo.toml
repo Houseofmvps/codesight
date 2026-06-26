@@ -1,0 +1,19 @@
+[package]
+name = "codesight-rust-ast"
+version = { workspace = true }
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+repository = { workspace = true }
+
+[lib]
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+syn = { workspace = true, features = ["full", "parsing", "printing", "visit"] }
+serde = { workspace = true }
+serde_json = { workspace = true }

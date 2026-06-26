@@ -1,0 +1,41 @@
+[workspace]
+resolver = "3"
+exclude = []
+members = [
+    "rust",
+    "python"
+]
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
+panic = "abort"
+codegen-units = 1
+
+[workspace.package]
+version = "0.0.1"
+authors = [
+    "Kailesk Khumar <kailesk@houseofmvps.com>",
+    "Mark S. <the@wondersmith.dev>",
+]
+edition = "2024"
+license = "MIT"
+publish = false
+repository = "https://github.com/Houseofmvps/codesight"
+
+[workspace.lints.rust]
+warnings = "deny"
+unsafe_code = "allow"
+unknown_lints = "allow"
+unexpected_cfgs = "allow"
+rust_2018_idioms = { level = "deny", priority = -1 }
+
+[workspace.dependencies]
+# Astral's ruff crates are not published to crates.io, so
+# we pin to a specific revision of `main` for reproducibility.
+ruff_python_parser = { git = "https://github.com/astral-sh/ruff.git", rev = "e1198ba76ed1211f503a7bfb390344eaf820c256", default-features = false }
+ruff_python_ast = { git = "https://github.com/astral-sh/ruff.git", rev = "e1198ba76ed1211f503a7bfb390344eaf820c256", default-features = false }
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+syn = { version = "2", default-features = false }
