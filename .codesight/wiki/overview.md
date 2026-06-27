@@ -42,4 +42,4 @@ Changes to these files have the widest blast radius across the codebase:
 - `XDG_DATA_HOME` — `src/ast/native-loader.ts`
 
 ---
-_Back to [index.md](./index.md) · Generated 2026-06-26_
+_Back to [index.md](./index.md) · Generated 2026-06-27_
