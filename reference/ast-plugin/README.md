@@ -21,6 +21,10 @@ scans the input for marker lines and emits the corresponding contract shapes:
 Anything else is ignored; input with no markers yields nothing (the host then
 falls back to its built-in extractors).
 
+It also exports `describe()`, reporting `{ "languageId": "reference",
+"extensions": [".ref"] }`, so the host's metadata-driven discovery and
+language-routing path is exercised alongside the `parse*` kinds.
+
 For a realistic, language-parsing example, see the ABI doc — the reference plugin
 intentionally stays minimal.
 
