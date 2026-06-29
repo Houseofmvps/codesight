@@ -21,6 +21,7 @@ Running `npx codesight --eval` will:
 | `nextjs-drizzle` | Next.js App Router + Drizzle ORM | Routes, schema, components, env vars |
 | `express-prisma` | Express + Prisma | Route detection, schema parsing, middleware |
 | `fastapi-sqlalchemy` | FastAPI + SQLAlchemy | Python routes, Python ORM, config |
+| `gin-gorm` | Go + Gin + GORM | Go routes (Gin), GORM schema |
 | `hono-monorepo` | Hono + Drizzle (pnpm monorepo) | Monorepo detection, workspace routes, schema |
 
 ## Adding a Fixture
