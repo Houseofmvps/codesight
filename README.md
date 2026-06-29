@@ -112,7 +112,7 @@ LLM needed to extract code structure. The wiki is a narrative layer on top of da
 
 ## Knowledge Mode (v1.9.3)
 
-Not just code — your decisions, meeting notes, ADRs, and retrospectives carry as much context as the codebase itself. `--mode knowledge`maps
+Not just code — your decisions, meeting notes, ADRs, and retrospectives carry as much context as the codebase itself. `--mode knowledge` maps
 them the same way codesight maps code.
 
 ```bash
@@ -382,7 +382,7 @@ destructuring + forwardRef/memo).
 ### Native-AST WASM plugins (opt-in)
 
 By default codesight uses its built-in extractors (AST for TypeScript, regex for everything else). Opt in with `--native-ast` to specify
-that **WebAssembly plugins** should be used to acquire full-AST precision fir non-TypeScript source files:
+that **WebAssembly plugins** should be used to acquire full-AST precision for non-TypeScript source files:
 
 ```bash
 npx codesight --native-ast                 # use every discovered plugin (additive)
