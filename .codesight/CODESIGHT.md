@@ -4,7 +4,7 @@
 
 > 4 routes (8 inferred) + 1 graphql + 3 ws | 0 models | 0 components | 67 lib files | 10 env vars | 5 middleware | 13 events | 60% test coverage
 > **Token savings:** this file is ~5,600 tokens. Without it, AI exploration would cost ~34,800 tokens. **Saves ~29,100 tokens per conversation.**
-> **Last scanned:** 2026-06-29 18:42 — re-run after significant changes
+> **Last scanned:** 2026-06-29 18:47 — re-run after significant changes
 
 ---
 
