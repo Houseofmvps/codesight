@@ -225,6 +225,11 @@ const CSS_AT_RULES = new Set([
   "stylistic", "styleset", "colorprofile", "property",
 ]);
 
+// Slack's own reserved mention keywords — never a person, in any project's docs
+const SLACK_RESERVED_MENTIONS = new Set([
+  "here", "channel", "everyone", "all", "group",
+]);
+
 function extractPeople(content: string): string[] {
   const people = new Set<string>();
 
@@ -242,6 +247,7 @@ function extractPeople(content: string): string[] {
     if (HANDLE_BLACKLIST.has(lower)) continue;
     if (JSDOC_TAGS.has(lower)) continue;   // @param, @deprecated, etc.
     if (CSS_AT_RULES.has(lower)) continue; // @keyframes, @font-face, etc.
+    if (SLACK_RESERVED_MENTIONS.has(lower)) continue; // @here, @channel, etc.
     // Skip npm scope prefixes: @pixi/layout → next char after handle is "/"
     const fullMatch = m[0]; // e.g. "@pixi"
     const afterIdx = m.index! + fullMatch.length;
